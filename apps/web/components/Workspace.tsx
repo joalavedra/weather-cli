@@ -49,40 +49,49 @@ function fmtUsd(n: number): string {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
+function fmtUsdShort(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}k`;
+  return `$${Math.round(n)}`;
+}
 
 function MarketBlock({ market }: { market: MarketSummary }) {
   const tag = [market.category, market.city].filter(Boolean).join(" / ");
+  const yesPrice = market.outcomePrices[0];
+  const noPrice = market.outcomePrices[1];
   return (
     <div>
       {tag ? (
-        <div className="text-xs uppercase tracking-wide text-zinc-500 mb-1">
+        <div className="text-[9px] uppercase tracking-[0.18em] text-[var(--text-dim)] mb-1.5">
           {tag}
         </div>
       ) : null}
-      <div className="font-medium text-zinc-900 mb-2">{market.question}</div>
-      <div className="grid grid-cols-2 gap-2 text-sm mb-2">
+      <div className="text-[13px] text-[var(--text)] mb-3 leading-snug">
+        {market.question}
+      </div>
+      <div className="t-odds">
         {market.outcomes.map((outcome, i) => {
           const price = market.outcomePrices[i];
           if (price === undefined) return null;
+          const cls = i === 0 ? "yes" : "no";
           return (
-            <div
-              key={outcome}
-              className="flex justify-between border border-zinc-100 rounded px-3 py-1.5 bg-zinc-50"
-            >
-              <span className="text-zinc-700">{outcome}</span>
-              <span className="font-mono font-semibold">
-                {(price * 100).toFixed(1)}¢
-              </span>
+            <div key={outcome} className={`t-odd ${cls}`}>
+              <div className="label">{outcome}</div>
+              <div className="price">{(price * 100).toFixed(1)}¢</div>
             </div>
           );
         })}
       </div>
-      <div className="text-xs text-zinc-500">
-        {market.liquidity !== undefined
-          ? `Liquidity ${fmtUsd(market.liquidity)}`
-          : ""}
-        {market.endDate ? ` · Ends ${market.endDate.slice(0, 10)}` : ""}
+      <div className="text-[10px] text-[var(--text-faint)] mt-2 flex justify-between tabular-nums">
+        <span>
+          {market.liquidity !== undefined ? `Liq ${fmtUsdShort(market.liquidity)}` : ""}
+        </span>
+        <span>
+          {market.endDate ? `Ends ${market.endDate.slice(0, 10)}` : ""}
+        </span>
       </div>
+      {/* suppress unused */}
+      <span className="hidden">{yesPrice}{noPrice}</span>
     </div>
   );
 }
@@ -94,56 +103,55 @@ function QuoteBlock({
   side: "Yes" | "No";
   quote: HedgeQuote;
 }) {
-  const rows: Array<[string, string]> = [
-    ["Side", side],
-    ["YES price", `${(quote.yesPriceUsdc * 100).toFixed(1)}¢`],
+  const rows: Array<[string, string, string?]> = [
+    ["Side", side.toUpperCase()],
+    ["Price", `${(quote.yesPriceUsdc * 100).toFixed(1)}¢`],
     ["Cost", fmtUsd(quote.costBudgetUsdc)],
     ["Shares", quote.sharesAffordable.toFixed(2)],
     ["Max payout", fmtUsd(quote.maxPayoutUsdc)],
     [
       "If trigger",
       `+${fmtUsd(quote.profitIfYesUsdc)} (${quote.roiIfYesPct.toFixed(1)}%)`,
+      "pos",
     ],
     [
       "If no hit",
       `-${fmtUsd(quote.costBudgetUsdc)} (${quote.roiIfNoPct.toFixed(1)}%)`,
+      "neg",
     ],
   ];
   if (quote.exposureValueUsdc !== null && quote.coverageRatio !== null) {
     rows.push(
       ["Exposure", fmtUsd(quote.exposureValueUsdc)],
-      ["Coverage", `${(quote.coverageRatio * 100).toFixed(1)}%`],
+      [
+        "Coverage",
+        `${(quote.coverageRatio * 100).toFixed(1)}% / ${fmtUsdShort(quote.exposureValueUsdc)}`,
+        "amber",
+      ],
     );
   }
   return (
-    <table className="w-full text-sm">
-      <tbody>
-        {rows.map(([label, value]) => (
-          <tr key={label} className="border-b border-zinc-100 last:border-0">
-            <td className="py-1 text-zinc-600">{label}</td>
-            <td className="py-1 text-right font-mono text-zinc-900">{value}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="t-quote mt-3">
+      {rows.map(([label, value, cls]) => (
+        <div key={label} className="t-row">
+          <span className="k">{label}</span>
+          <span className={`v ${cls ?? ""}`}>{value}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
-function ActiveCard({ active }: { active: Pin | null }) {
-  if (!active) return null;
+function ActiveCard({ active }: { active: Pin }) {
   if (active.kind === "market") {
     return (
-      <div className="border border-zinc-200 rounded-lg p-4 bg-white shadow-sm space-y-3">
-        <div className="text-xs uppercase tracking-wide text-zinc-400">
-          Pinned market
+      <div className="t-panel">
+        <div className="t-panel-label mb-3">
+          <span className="t-trade-tag">Pinned market</span>
+          <span className="t-status-cyan">live</span>
         </div>
         <MarketBlock market={active.market} />
-        <a
-          href={active.market.url}
-          target="_blank"
-          rel="noreferrer"
-          className="block text-sm text-blue-600 hover:underline font-medium"
-        >
+        <a className="t-link" href={active.market.url} target="_blank" rel="noreferrer">
           Open on Polymarket →
         </a>
       </div>
@@ -151,38 +159,52 @@ function ActiveCard({ active }: { active: Pin | null }) {
   }
   if (active.kind === "quote") {
     return (
-      <div className="border border-zinc-200 rounded-lg p-4 bg-white shadow-sm space-y-3">
-        <div className="text-xs uppercase tracking-wide text-zinc-400">
-          Active trade
+      <div className="t-panel">
+        <div className="t-panel-label mb-3">
+          <span className="t-trade-tag">Active trade</span>
+          <span className="t-status-cyan">streaming</span>
         </div>
         <MarketBlock market={active.market} />
-        <div className="border-t border-zinc-100 pt-3">
-          <QuoteBlock side={active.side} quote={active.quote} />
-        </div>
-        <a
-          href={active.market.url}
-          target="_blank"
-          rel="noreferrer"
-          className="block text-sm text-blue-600 hover:underline font-medium"
-        >
+        <QuoteBlock side={active.side} quote={active.quote} />
+        <a className="t-link" href={active.market.url} target="_blank" rel="noreferrer">
           Open on Polymarket →
         </a>
       </div>
     );
   }
   return (
-    <div className="border border-emerald-300 rounded-lg p-4 bg-emerald-50 shadow-sm space-y-2">
-      <div className="text-xs uppercase tracking-wide text-emerald-700">
-        Order placed
+    <div className="t-panel" style={{ borderColor: "var(--green)" }}>
+      <div className="t-panel-label mb-3">
+        <span style={{ color: "var(--green)" }}>Order placed</span>
+        <span className="t-status-cyan">filled</span>
       </div>
-      <div className="font-medium text-zinc-900">{active.marketQuestion}</div>
-      <div className="text-sm text-zinc-700">
-        Bought <strong>{active.side}</strong> · {fmtUsd(active.amountUsdc)}
+      <div className="text-[13px] text-[var(--text)] mb-2">
+        {active.marketQuestion}
       </div>
-      <div className="text-xs font-mono text-zinc-500 break-all">
-        {active.orderId ? `Order ${active.orderId}` : "Order ID pending"}
-        {active.status ? ` · ${active.status}` : ""}
+      <div className="t-row">
+        <span className="k">Side</span>
+        <span className="v">{active.side.toUpperCase()}</span>
       </div>
+      <div className="t-row">
+        <span className="k">Amount</span>
+        <span className="v" style={{ color: "var(--amber)" }}>
+          {fmtUsd(active.amountUsdc)}
+        </span>
+      </div>
+      {active.orderId ? (
+        <div className="t-row">
+          <span className="k">Order ID</span>
+          <span className="v text-[10px] break-all">
+            {active.orderId.slice(0, 14)}…
+          </span>
+        </div>
+      ) : null}
+      {active.status ? (
+        <div className="t-row">
+          <span className="k">Status</span>
+          <span className="v">{active.status}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -190,20 +212,30 @@ function ActiveCard({ active }: { active: Pin | null }) {
 function HistoryRow({ pin }: { pin: Pin }) {
   if (pin.kind === "market") {
     return (
-      <li className="text-xs text-zinc-600 truncate">· {pin.market.question}</li>
+      <li className="text-[10.5px] text-[var(--text-dim)] truncate flex items-center gap-2">
+        <span className="text-[var(--text-faint)]">›</span>
+        <span className="truncate">{pin.market.question}</span>
+      </li>
     );
   }
   if (pin.kind === "quote") {
     return (
-      <li className="text-xs text-zinc-600 truncate">
-        · {pin.side} · {fmtUsd(pin.quote.costBudgetUsdc)} ·{" "}
-        {pin.market.question}
+      <li className="text-[10.5px] text-[var(--text-dim)] truncate flex items-center gap-2">
+        <span className="text-[var(--text-faint)]">›</span>
+        <span className="text-[var(--amber)] tabular-nums">
+          {pin.side.toUpperCase()} {fmtUsdShort(pin.quote.costBudgetUsdc)}
+        </span>
+        <span className="truncate">{pin.market.question}</span>
       </li>
     );
   }
   return (
-    <li className="text-xs text-emerald-700 truncate">
-      ✓ {pin.side} · {fmtUsd(pin.amountUsdc)} · {pin.marketQuestion}
+    <li className="text-[10.5px] truncate flex items-center gap-2">
+      <span style={{ color: "var(--green)" }}>✓</span>
+      <span className="text-[var(--green)] tabular-nums">
+        {pin.side.toUpperCase()} {fmtUsdShort(pin.amountUsdc)}
+      </span>
+      <span className="text-[var(--text-dim)] truncate">{pin.marketQuestion}</span>
     </li>
   );
 }
@@ -214,18 +246,22 @@ export function Workspace({ pins }: { pins: Pin[] }) {
   const history = pins.slice(0, -1);
 
   return (
-    <aside className="w-[380px] shrink-0 border-r border-zinc-200 bg-zinc-100/60 flex flex-col h-screen">
-      <div className="px-4 py-4 border-b border-zinc-200 bg-white space-y-2">
-        <h2 className="text-sm font-semibold text-zinc-900">Workspace</h2>
-        <WalletPanel />
+    <aside className="w-[380px] shrink-0 border-r border-[var(--border)] bg-[var(--panel)] flex flex-col h-screen">
+      <div className="px-4 py-3.5 border-b border-[var(--border)]">
+        <div className="t-panel-label">
+          <span>Workspace</span>
+          <span className="t-pill live">live</span>
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div className="flex-1 overflow-y-auto px-4 py-3.5 flex flex-col gap-3.5">
+        <WalletPanel />
+        {active ? <ActiveCard active={active} /> : null}
         {history.length > 0 ? (
-          <div>
+          <div className="mt-1">
             <button
               type="button"
               onClick={() => setShowHistory((v) => !v)}
-              className="text-xs text-zinc-500 hover:text-zinc-900 flex items-center gap-1"
+              className="t-history-toggle"
             >
               <span>{showHistory ? "▾" : "▸"}</span>
               <span>History ({history.length})</span>
@@ -239,14 +275,13 @@ export function Workspace({ pins }: { pins: Pin[] }) {
             ) : null}
           </div>
         ) : null}
-        {active ? (
-          <ActiveCard active={active} />
-        ) : (
-          <div className="text-sm text-zinc-500 leading-relaxed">
-            Tell me what you want to hedge — the event, dollar amount at risk,
-            and the time window. I&apos;ll size the trade and pin it here.
+        {!active ? (
+          <div className="text-[12px] text-[var(--text-dim)] leading-relaxed">
+            <span className="text-[var(--text-faint)]">›</span> Tell me what
+            you want to hedge — the event, dollar amount at risk, and the time
+            window. I&apos;ll size the trade and pin it here.
           </div>
-        )}
+        ) : null}
       </div>
     </aside>
   );

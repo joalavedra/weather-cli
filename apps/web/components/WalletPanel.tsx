@@ -32,10 +32,7 @@ async function fetchWallet(): Promise<WalletApiPayload> {
 }
 
 async function createWallet(): Promise<WalletApiPayload> {
-  const res = await fetch("/api/wallet", {
-    method: "POST",
-    cache: "no-store",
-  });
+  const res = await fetch("/api/wallet", { method: "POST", cache: "no-store" });
   if (!res.ok) throw new Error(`wallet create ${res.status}`);
   return (await res.json()) as WalletApiPayload;
 }
@@ -51,12 +48,12 @@ export function WalletPanel({
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [qrOpen, setQrOpen] = useState(true);
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
 
   useEffect(() => {
     let cancelled = false;
-
     async function bootstrap() {
       try {
         let status = await fetchWallet();
@@ -74,7 +71,6 @@ export function WalletPanel({
         setErrorMsg(err instanceof Error ? err.message : String(err));
       }
     }
-
     void bootstrap();
     return () => {
       cancelled = true;
@@ -85,12 +81,8 @@ export function WalletPanel({
     if (phase !== "ready") return;
     const id = setInterval(() => {
       void fetchWallet()
-        .then((next) => {
-          setWallet(next);
-        })
-        .catch(() => {
-          // transient — keep polling
-        });
+        .then((next) => setWallet(next))
+        .catch(() => {});
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [phase]);
@@ -115,29 +107,47 @@ export function WalletPanel({
 
   if (phase === "loading") {
     return (
-      <div className="text-xs text-zinc-500 px-3 py-2 border border-dashed border-zinc-300 rounded">
-        Checking wallet…
+      <div className="t-panel">
+        <div className="t-panel-label">
+          <span>Wallet</span>
+          <span className="t-pill warn">checking</span>
+        </div>
       </div>
     );
   }
   if (phase === "creating") {
     return (
-      <div className="text-xs text-zinc-600 px-3 py-2 bg-white border border-zinc-200 rounded">
-        Creating your wallet…
+      <div className="t-panel">
+        <div className="t-panel-label">
+          <span>Wallet</span>
+          <span className="t-pill warn">creating</span>
+        </div>
       </div>
     );
   }
   if (phase === "error" || !wallet) {
     return (
-      <div className="text-xs text-red-700 px-3 py-2 bg-red-50 border border-red-200 rounded">
-        Wallet error: {errorMsg ?? "unknown"}
+      <div className="t-panel" style={{ borderColor: "var(--red)" }}>
+        <div className="t-panel-label" style={{ marginBottom: 6 }}>
+          <span>Wallet</span>
+          <span className="t-pill err">error</span>
+        </div>
+        <div className="text-[10.5px] text-[var(--text-dim)] break-all">
+          {errorMsg ?? "unknown"}
+        </div>
       </div>
     );
   }
   if (wallet.geoblocked === true) {
     return (
-      <div className="text-xs text-amber-700 px-3 py-2 bg-amber-50 border border-amber-200 rounded">
-        Polymarket is geoblocked from this location. Trades will fail.
+      <div className="t-panel" style={{ borderColor: "var(--amber-dim)" }}>
+        <div className="t-panel-label" style={{ marginBottom: 6 }}>
+          <span>Wallet</span>
+          <span className="t-pill warn">geoblocked</span>
+        </div>
+        <div className="text-[10.5px] text-[var(--text-dim)]">
+          Polymarket is geoblocked from this location. Trades will fail.
+        </div>
       </div>
     );
   }
@@ -145,98 +155,133 @@ export function WalletPanel({
   const balance = wallet.usdcBalanceUsd ?? 0;
   const needsFunds = balance < 1;
   const needsApprovals = wallet.approvalsReady === false;
-  const showFunding = needsFunds || needsApprovals;
+  const isReady =
+    !needsFunds && wallet.approvalsReady === true;
   const fundingAddress =
     wallet.signatureType === "proxy" && wallet.proxyAddress
       ? wallet.proxyAddress
       : wallet.address;
   const fundingLabel =
     wallet.signatureType === "proxy" && wallet.proxyAddress
-      ? "Polymarket proxy"
+      ? "Proxy"
       : "Wallet";
 
   return (
-    <div className="bg-white border border-zinc-200 rounded space-y-3 p-3">
-      <div className="space-y-0.5">
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-zinc-500">{fundingLabel}</span>
-          {fundingAddress ? (
-            <button
-              type="button"
-              onClick={() => copyAddress(fundingAddress)}
-              className="text-xs font-mono text-zinc-700 hover:text-zinc-900"
-              title="Click to copy full address"
-            >
-              {shortAddr(fundingAddress)} {copied ? "✓" : "⧉"}
-            </button>
-          ) : (
-            <span className="text-xs font-mono text-zinc-400">—</span>
-          )}
-        </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-zinc-500">USDC</span>
-          <span className="font-mono">{fmtUsd(wallet.usdcBalanceUsd)}</span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-zinc-500">Approvals</span>
-          <span
-            className={
-              wallet.approvalsReady === true
-                ? "text-emerald-700"
-                : wallet.approvalsReady === false
-                  ? "text-amber-700"
-                  : "text-zinc-500"
-            }
-          >
-            {wallet.approvalsReady === true
-              ? "ready"
-              : wallet.approvalsReady === false
-                ? "needed"
-                : "unknown"}
-          </span>
-        </div>
+    <div className="t-panel">
+      <div className="t-panel-label" style={{ marginBottom: 8 }}>
+        <span>Wallet</span>
+        {isReady ? (
+          <span className="t-pill ready">ready</span>
+        ) : needsFunds ? (
+          <span className="t-pill warn">unfunded</span>
+        ) : needsApprovals ? (
+          <span className="t-pill warn">approvals needed</span>
+        ) : (
+          <span className="t-pill warn">setup</span>
+        )}
       </div>
 
-      {showFunding && fundingAddress ? (
-        <div className="border-t border-zinc-100 pt-3 space-y-2">
-          {needsFunds ? (
+      <div className="t-row">
+        <span className="k">{fundingLabel}</span>
+        {fundingAddress ? (
+          <button
+            type="button"
+            onClick={() => copyAddress(fundingAddress)}
+            className="v hover:text-[var(--amber)] cursor-pointer text-left bg-transparent border-0 p-0 font-[inherit] text-[12px]"
+            title="Click to copy"
+          >
+            {shortAddr(fundingAddress)} {copied ? "✓" : "⧉"}
+          </button>
+        ) : (
+          <span className="v text-[var(--text-faint)]">—</span>
+        )}
+      </div>
+      <div className="t-row">
+        <span className="k">USDC</span>
+        <span
+          className="v"
+          style={{ color: balance > 0 ? "var(--amber)" : "var(--text-faint)" }}
+        >
+          {fmtUsd(wallet.usdcBalanceUsd)}
+        </span>
+      </div>
+      <div className="t-row">
+        <span className="k">Approvals</span>
+        <span
+          className="v"
+          style={{
+            color:
+              wallet.approvalsReady === true
+                ? "var(--green)"
+                : wallet.approvalsReady === false
+                  ? "var(--amber)"
+                  : "var(--text-faint)",
+          }}
+        >
+          {wallet.approvalsReady === true
+            ? "ready"
+            : wallet.approvalsReady === false
+              ? "needed"
+              : "—"}
+        </span>
+      </div>
+
+      {needsFunds && fundingAddress ? (
+        <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border-2)" }}>
+          <button
+            type="button"
+            onClick={() => setQrOpen((v) => !v)}
+            className="t-history-toggle w-full justify-between"
+            style={{ color: "var(--amber)" }}
+            title={qrOpen ? "Hide QR" : "Show QR"}
+          >
+            <span>Fund this wallet</span>
+            <span style={{ color: "var(--text-dim)" }}>{qrOpen ? "▾" : "▸"}</span>
+          </button>
+          {qrOpen ? (
             <>
-              <div className="text-xs text-zinc-700 font-medium">
-                Fund this wallet to start trading
-              </div>
-              <div className="flex justify-center bg-zinc-50 border border-zinc-200 rounded p-3">
+              <div
+                className="flex justify-center mt-2 mb-2 p-2"
+                style={{ background: "#fff" }}
+              >
                 <QRCodeSVG
                   value={fundingAddress}
                   size={140}
                   level="M"
-                  bgColor="#fafafa"
-                  fgColor="#18181b"
+                  bgColor="#ffffff"
+                  fgColor="#000000"
                 />
               </div>
               <button
                 type="button"
                 onClick={() => copyAddress(fundingAddress)}
-                className="w-full text-[11px] font-mono text-zinc-700 break-all bg-zinc-50 border border-zinc-200 rounded px-2 py-1.5 hover:bg-zinc-100 text-left"
+                className="t-addr-box"
                 title="Click to copy"
               >
-                {fundingAddress} {copied ? "✓" : ""}
+                <span>{fundingAddress}</span>
+                <span className="text-[var(--text-dim)]">{copied ? "✓" : "⧉"}</span>
               </button>
-              <p className="text-[11px] text-zinc-500 leading-relaxed">
-                Send USDC on <strong>Polygon</strong> to this address. Also
-                send a little MATIC (for gas) to the signer EOA{" "}
+              <div className="text-[10.5px] text-[var(--text-faint)] mt-2 leading-relaxed">
+                Send <span className="text-[var(--text-dim)]">USDC</span> on{" "}
+                <span className="text-[var(--text-dim)]">Polygon</span> to this
+                address. Also send a little MATIC for gas to the signer EOA{" "}
                 {wallet.address ? (
-                  <code className="font-mono">{shortAddr(wallet.address)}</code>
+                  <span className="text-[var(--text-dim)]">
+                    {shortAddr(wallet.address)}
+                  </span>
                 ) : null}
-                . Balance refreshes every few seconds.
-              </p>
+                .
+              </div>
             </>
           ) : null}
-          {needsApprovals && !needsFunds ? (
-            <p className="text-[11px] text-zinc-600 leading-relaxed">
-              Wallet funded. Ask the broker to <strong>run approvals</strong>{" "}
-              before placing a trade.
-            </p>
-          ) : null}
+        </div>
+      ) : null}
+
+      {needsApprovals && !needsFunds ? (
+        <div className="mt-3 pt-3 text-[10.5px] text-[var(--text-dim)] leading-relaxed" style={{ borderTop: "1px solid var(--border-2)" }}>
+          Wallet funded. Ask the broker to{" "}
+          <span className="text-[var(--amber)]">run approvals</span> before
+          placing a trade.
         </div>
       ) : null}
     </div>

@@ -296,6 +296,19 @@ export const getPositionsTool = tool({
   },
 });
 
+export const suggestRepliesTool = tool({
+  description:
+    "Offer the user 2-4 short pre-written replies they can click instead of typing. Use whenever you've asked them a question, asked for confirmation, or there's a small natural set of next moves (e.g. 'Place it', 'Refine to $500', 'What's the worst case?'). Keep each reply ≤8 words, written in the user's voice (first person where natural). They can still type a free response.",
+  inputSchema: z.object({
+    replies: z
+      .array(z.string().min(1).max(80))
+      .min(1)
+      .max(4)
+      .describe("2-4 short suggested replies."),
+  }),
+  execute: ({ replies }) => ({ replies }),
+});
+
 export const brokerTools = {
   search_markets: searchMarketsTool,
   search_weather_markets: searchWeatherMarketsTool,
@@ -308,4 +321,5 @@ export const brokerTools = {
   run_approvals: runApprovalsTool,
   place_order: placeOrderTool,
   get_positions: getPositionsTool,
+  suggest_replies: suggestRepliesTool,
 };
