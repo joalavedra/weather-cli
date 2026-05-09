@@ -8,7 +8,7 @@ import type { FormEvent } from "react";
 import Markdown from "react-markdown";
 import type { HedgeQuote } from "@weather/core";
 import { Workspace } from "@/components/Workspace";
-import type { Pin, WalletState } from "@/components/Workspace";
+import type { Pin } from "@/components/Workspace";
 
 interface MarketSummary {
   id: string;
@@ -29,14 +29,6 @@ interface QuoteToolOutput {
   quote: HedgeQuote;
 }
 
-interface WalletToolOutput {
-  configured: boolean;
-  address: string | null;
-  usdcBalanceUsd: number | null;
-  approvalsReady: boolean | null;
-  geoblocked: boolean | null;
-}
-
 interface OrderToolOutput {
   orderId: string | null;
   status: string | null;
@@ -48,11 +40,9 @@ interface OrderToolOutput {
 
 function deriveState(messages: UIMessage[]): {
   pins: Pin[];
-  wallet: WalletState | null;
   inlineHints: Map<string, string[]>;
 } {
   const pins: Pin[] = [];
-  let wallet: WalletState | null = null;
   const inlineHints = new Map<string, string[]>();
 
   function addHint(messageId: string, hint: string) {
@@ -110,31 +100,16 @@ function deriveState(messages: UIMessage[]): {
         addHint(m.id, "checked city inventory");
       } else if (part.type === "tool-wallet_status") {
         if (part.state !== "output-available") continue;
-        const out = part.output as WalletToolOutput;
-        wallet = {
-          configured: out.configured,
-          address: out.address,
-          usdcBalanceUsd: out.usdcBalanceUsd,
-          approvalsReady: out.approvalsReady,
-          geoblocked: out.geoblocked,
-        };
+        addHint(m.id, "checked wallet");
       } else if (part.type === "tool-setup_wallet") {
         if (part.state !== "output-available") continue;
         const out = part.output as { address: string };
-        wallet = {
-          configured: true,
-          address: out.address,
-          usdcBalanceUsd: 0,
-          approvalsReady: false,
-          geoblocked: null,
-        };
-        addHint(m.id, `wallet created: ${out.address.slice(0, 6)}…${out.address.slice(-4)}`);
+        addHint(
+          m.id,
+          `wallet created: ${out.address.slice(0, 6)}…${out.address.slice(-4)}`,
+        );
       } else if (part.type === "tool-run_approvals") {
         if (part.state !== "output-available") continue;
-        if (wallet !== null) {
-          const prev: WalletState = wallet;
-          wallet = { ...prev, approvalsReady: true };
-        }
         addHint(m.id, "approvals submitted");
       } else if (part.type === "tool-place_order") {
         if (part.state !== "output-available") continue;
@@ -156,7 +131,7 @@ function deriveState(messages: UIMessage[]): {
       }
     }
   }
-  return { pins, wallet, inlineHints };
+  return { pins, inlineHints };
 }
 
 function AssistantText({ text }: { text: string }) {
@@ -248,12 +223,12 @@ export function Chat() {
     setInput("");
   }
 
-  const { pins, wallet, inlineHints } = deriveState(messages);
+  const { pins, inlineHints } = deriveState(messages);
   const isBusy = status === "submitted" || status === "streaming";
 
   return (
     <div className="flex h-screen">
-      <Workspace pins={pins} wallet={wallet} />
+      <Workspace pins={pins} />
       <div className="flex-1 flex flex-col">
         <header className="border-b border-zinc-200 px-6 py-4 bg-white">
           <h1 className="font-semibold text-lg">Hedge Broker</h1>

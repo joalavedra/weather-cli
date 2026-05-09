@@ -16,6 +16,7 @@
     "@weather/core": "workspace:*",
     "ai": "6.0.177",
     "next": "16.2.6",
+    "qrcode.react": "4.2.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "react-markdown": "10.1.0",
