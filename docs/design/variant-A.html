@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Variant A — Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #111111;
+    --panel-2: #161616;
+    --border: #232323;
+    --border-2: #1a1a1a;
+    --text: #e6e6e6;
+    --text-dim: #8a8a8a;
+    --text-faint: #525252;
+    --amber: #ffaa00;
+    --amber-dim: #b87800;
+    --cyan: #00ddff;
+    --green: #00d97e;
+    --red: #ff3b3b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    background: var(--bg);
+    background-image:
+      linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+    background-size: 24px 24px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .root { display: flex; height: 100vh; }
+
+  /* Workspace */
+  .workspace { width: 380px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--panel); }
+  .ws-header { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .ws-title { font-size: 10px; letter-spacing: 0.18em; color: var(--text-dim); text-transform: uppercase; }
+  .ws-tag { display: inline-block; margin-left: 8px; padding: 1px 6px; background: rgba(255,170,0,0.1); color: var(--amber); border: 1px solid rgba(255,170,0,0.25); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .ws-body { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+
+  /* Wallet panel */
+  .panel { background: var(--panel-2); border: 1px solid var(--border); padding: 12px; }
+  .panel-label { font-size: 10px; letter-spacing: 0.18em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px; }
+  .row .k { color: var(--text-dim); font-size: 11px; letter-spacing: 0.05em; }
+  .row .v { font-variant-numeric: tabular-nums; }
+  .v-amber { color: var(--amber); }
+  .v-cyan { color: var(--cyan); }
+  .v-warn { color: #ff8800; }
+  .divider { border-top: 1px solid var(--border-2); margin: 10px 0; }
+
+  .qr {
+    background: #fff; padding: 8px; display: flex; justify-content: center; margin: 8px 0;
+  }
+  .qr svg { width: 140px; height: 140px; display: block; }
+  .addr-box {
+    background: var(--bg); border: 1px solid var(--border); padding: 8px 10px; font-size: 10.5px;
+    color: var(--text); word-break: break-all; cursor: pointer;
+  }
+  .addr-box:hover { border-color: var(--amber-dim); color: var(--amber); }
+  .funding-note { font-size: 10.5px; color: var(--text-faint); line-height: 1.55; margin-top: 8px; }
+  .funding-note strong { color: var(--text-dim); }
+
+  /* Active trade */
+  .trade-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .trade-tag { font-size: 9px; letter-spacing: 0.18em; color: var(--amber); text-transform: uppercase; }
+  .trade-status { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--cyan); }
+  .trade-status::before { content: ''; width: 6px; height: 6px; background: var(--cyan); display: inline-block; border-radius: 50%; box-shadow: 0 0 6px var(--cyan); }
+  .market-q { font-size: 13px; color: var(--text); margin-bottom: 12px; line-height: 1.45; }
+  .odds { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--border); }
+  .odd { padding: 8px 10px; border-right: 1px solid var(--border); }
+  .odd:last-child { border-right: 0; }
+  .odd .label { font-size: 9px; letter-spacing: 0.18em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }
+  .odd .price { font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .odd.yes .price { color: var(--green); }
+  .odd.no .price { color: var(--red); }
+  .odd .delta { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+  .quote-table { margin-top: 12px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .quote-table .row { padding: 3px 0; border-bottom: 1px dashed rgba(255,255,255,0.04); }
+  .quote-table .row:last-child { border-bottom: 0; }
+  .quote-table .v.pnl-pos { color: var(--green); }
+  .quote-table .v.pnl-neg { color: var(--red); }
+
+  .open-link { display: block; margin-top: 12px; padding: 8px 10px; border: 1px solid var(--amber-dim); color: var(--amber); text-align: center; text-decoration: none; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .open-link:hover { background: rgba(255,170,0,0.08); }
+
+  .history-toggle { background: none; border: 0; color: var(--text-dim); font-family: inherit; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; cursor: pointer; padding: 0; }
+
+  /* Chat */
+  .chat { flex: 1; display: flex; flex-direction: column; background: var(--bg); }
+  .chat-head {
+    padding: 14px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand .glyph { width: 24px; height: 24px; border: 1px solid var(--amber); display: grid; place-items: center; color: var(--amber); font-size: 11px; }
+  .brand h1 { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; font-weight: 500; letter-spacing: 0.02em; color: var(--text); }
+  .brand p { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .clock { font-size: 10px; color: var(--text-faint); letter-spacing: 0.1em; }
+  .clock .live { color: var(--cyan); }
+
+  .stream { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 14px; }
+  .msg { font-size: 13px; line-height: 1.65; max-width: 78%; }
+  .msg.user { align-self: flex-end; background: var(--panel); border: 1px solid var(--border); padding: 8px 12px; color: var(--text); }
+  .msg.assistant { align-self: flex-start; color: var(--text); padding: 0; }
+  .msg.assistant strong { color: var(--amber); }
+  .msg.assistant code { background: var(--panel); padding: 1px 5px; font-size: 12px; }
+  .hint-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .hint { font-size: 10px; letter-spacing: 0.06em; color: var(--text-dim); padding: 2px 6px; border: 1px solid var(--border); }
+  .hint.amber { color: var(--amber); border-color: rgba(255,170,0,0.3); }
+
+  .composer { border-top: 1px solid var(--border); padding: 14px 24px; }
+  .composer-inner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); background: var(--panel-2); }
+  .composer-inner:focus-within { border-color: var(--amber-dim); }
+  .prompt-caret { color: var(--amber); font-weight: 500; }
+  .composer-input { flex: 1; background: none; border: 0; font-family: inherit; color: var(--text); font-size: 13px; outline: 0; }
+  .composer-input::placeholder { color: var(--text-faint); }
+  .send-btn { background: var(--amber); color: #000; border: 0; padding: 6px 12px; font-family: inherit; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="root">
+
+  <aside class="workspace">
+    <div class="ws-header">
+      <span class="ws-title">Workspace</span>
+      <span class="ws-tag">live</span>
+    </div>
+    <div class="ws-body">
+
+      <div class="panel">
+        <div class="panel-label">
+          <span>Wallet</span>
+          <span class="v-cyan">connected</span>
+        </div>
+        <div class="row">
+          <span class="k">Polymarket proxy</span>
+          <span class="v">0x8919…F026</span>
+        </div>
+        <div class="row">
+          <span class="k">USDC balance</span>
+          <span class="v v-amber">$300.00</span>
+        </div>
+        <div class="row">
+          <span class="k">Approvals</span>
+          <span class="v v-cyan">ready</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="trade-head">
+          <span class="trade-tag">Active trade</span>
+          <span class="trade-status">streaming</span>
+        </div>
+        <div class="market-q">Will Bitcoin close below $90,000 by Dec 31, 2026?</div>
+        <div class="odds">
+          <div class="odd yes">
+            <div class="label">YES</div>
+            <div class="price">23.0¢</div>
+            <div class="delta">+0.5 · 1h</div>
+          </div>
+          <div class="odd no">
+            <div class="label">NO</div>
+            <div class="price">77.0¢</div>
+            <div class="delta">-0.5 · 1h</div>
+          </div>
+        </div>
+        <div class="quote-table">
+          <div class="row"><span class="k">Side</span><span class="v">YES</span></div>
+          <div class="row"><span class="k">Cost</span><span class="v">$300.00</span></div>
+          <div class="row"><span class="k">Shares</span><span class="v">1,304.35</span></div>
+          <div class="row"><span class="k">Max payout</span><span class="v">$1,304.35</span></div>
+          <div class="row"><span class="k">If trigger</span><span class="v pnl-pos">+$1,004.35 (335%)</span></div>
+          <div class="row"><span class="k">If no hit</span><span class="v pnl-neg">−$300.00 (−100%)</span></div>
+          <div class="row"><span class="k">Coverage</span><span class="v v-amber">10.0% / $10k</span></div>
+        </div>
+        <a class="open-link" href="#">Open on Polymarket →</a>
+      </div>
+
+      <button class="history-toggle">▸ History (2)</button>
+
+    </div>
+  </aside>
+
+  <main class="chat">
+    <div class="chat-head">
+      <div class="brand">
+        <div class="glyph">▮</div>
+        <div>
+          <h1>HEDGE BROKER</h1>
+          <p>Polymarket event-risk insurance</p>
+        </div>
+      </div>
+      <div class="clock"><span class="live">●</span> 00:38:42 UTC</div>
+    </div>
+
+    <div class="stream">
+      <div class="msg user">$10k crypto treasury — hedge me if BTC closes below $90k by year-end.</div>
+      <div class="msg assistant">
+        Found one. <strong>Bitcoin Below $90,000 by EOY</strong> — buy <code>YES</code> at 23¢. Sized for $300 (10% coverage of your $10k exposure). Pinned on the left. Place it?
+        <div class="hint-row">
+          <span class="hint amber">pinned trade · YES · $300</span>
+          <span class="hint">searched markets</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="composer-inner">
+        <span class="prompt-caret">›</span>
+        <input class="composer-input" placeholder="confirm to place, or refine sizing…" />
+        <button class="send-btn">Send</button>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<script>
+  // tiny QR placeholder (not a real QR)
+  // not used in this snapshot — wallet shown funded
+</script>
+</body>
+</html>

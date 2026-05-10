@@ -1,92 +1,98 @@
 # Hedge Broker
 
-A chat-based insurance broker that hedges any event risk Polymarket prices — politics, sports, crypto, weather, business — and places the trade for you.
+A chat-driven **event-risk insurance broker** that hedges any insurable event by buying YES/NO shares on [Polymarket](https://polymarket.com) prediction markets — and can place the trade for you through a connected wallet.
 
-You describe what you're trying to insure. The broker asks the right intake questions, finds a market, sizes the position (cost, max payout, ROI both ways, coverage ratio), and — once you confirm — places a market-buy on Polymarket using your funded wallet.
+Tell it what you're trying to protect against. It finds the right market, sizes the position against your dollar exposure, and pins a quote on the workspace. Confirm in chat and it places the order through the Polymarket CLI.
 
-## Layout
+Two surfaces:
+
+- **`@weather/web`** — Next.js chat UI with streaming tool calls, wallet panel, and a pinned active-trade card.
+- **`@weather/cli`** — `weather` command for browsing / quoting Polymarket weather markets from the terminal.
+
+Both share a single domain core (`@weather/core`).
+
+## Design
+
+The chat UI is built off **Variant A** from the design shotgun — a terminal aesthetic (IBM Plex Mono, dark panels, amber accents, a workspace rail with wallet + active-trade card on the left, conversation stream on the right).
+
+**Design mock — Variant A**
+
+![Variant A — terminal mock](docs/design/variant-A.png)
+
+Source HTML for the mock: [`docs/design/variant-A.html`](docs/design/variant-A.html).
+
+**Implemented**
+
+![Implemented chat UI](docs/design/implemented.png)
+
+The shipped UI keeps the layout and tokens from the mock and adds: streaming tool-call indicators, suggested-reply pills under the composer, an auto-created wallet with funding QR, and a light-theme toggle.
+
+## What it covers
+
+The broker is wired to Polymarket-wide search, not just weather. Categories it routes:
+
+- **Weather** — city-level temperature (NYC, Tokyo, Madrid, Beijing, Shanghai, Singapore, Jakarta, Bangkok, Hong Kong, London, Seoul, Paris…), seasonal hurricanes / tornadoes, space weather.
+- **Politics & elections, geopolitics, sports, crypto / macro, business (M&A, FDA, earnings), entertainment.**
+
+If no Polymarket market exists for the risk, the broker says so plainly instead of fabricating one.
+
+## Architecture
 
 ```
-apps/
-  web/    Next.js 16 chat broker UI (DeepSeek + AI SDK + tool calls)
-  cli/    terminal browser for weather markets and hedge math
-packages/
-  core/   Polymarket client, market classification, hedge math, trading
-          (wraps the official polymarket Rust CLI)
+weather-cli/
+├── packages/core/        # @weather/core — shared domain logic
+│   ├── polymarket.ts     # search/get/list — wraps the `polymarket` CLI binary
+│   ├── weather.ts        # category + city classification, weather-relevant filter
+│   ├── hedge.ts          # computeHedge / quoteFromMarket — sizing + ROI math
+│   └── trading.ts        # wallet status, approvals, market orders, positions
+├── apps/cli/             # @weather/cli — `weather` Commander CLI
+│   └── src/index.ts      # list / city / cities / show / quote / hedge
+└── apps/web/             # @weather/web — Next.js 16 chat broker
+    ├── app/api/chat/     # streaming chat route (DeepSeek + AI SDK tools)
+    ├── app/api/wallet/   # wallet status / create / approvals endpoints
+    ├── lib/tools.ts      # broker tools exposed to the model
+    ├── lib/system-prompt.ts
+    └── components/       # Chat, WalletPanel, Workspace
 ```
 
-## Prerequisites
+The broker exposes these tools to the model: `search_weather_markets`, `list_cities`, `search_markets`, `get_market`, `compute_hedge_quote`, `wallet_status`, `setup_wallet`, `run_approvals`, `place_order`, `get_positions`, `suggest_replies`.
 
-- Node 22+, pnpm 10+
-- The official [polymarket Rust CLI](https://github.com/Polymarket/polymarket-cli):
+## Running it
 
-  ```bash
-  brew tap Polymarket/polymarket-cli https://github.com/Polymarket/polymarket-cli
-  brew install polymarket
-  ```
-
-- A DeepSeek API key for the chat broker (`DEEPSEEK_API_KEY`)
-- For trading: a Polygon-funded wallet (USDC + a little MATIC for gas). The web app creates the wallet for you — see _Trading_ below.
-
-## Setup
+Requirements: **Node 22+**, **pnpm 10**, and the [`polymarket` CLI](https://github.com/Polymarket) on `$PATH` (or `POLYMARKET_BIN` set).
 
 ```bash
 pnpm install
-cp /dev/null apps/web/.env.local
-echo "DEEPSEEK_API_KEY=sk-..." >> apps/web/.env.local
-pnpm -r build
-```
+pnpm build
 
-## CLI
-
-Browse weather markets and compute hedge math without trading:
-
-```bash
-pnpm cli cities                           # list cities with markets
-pnpm cli city Madrid                      # markets for a specific city
-pnpm cli list --limit 5                   # all weather markets, top 5
-pnpm cli show <slug>                      # market detail
-pnpm cli quote <slug> --side yes --budget 100 --exposure 1000
-pnpm cli hedge --yes-price 0.25 --budget 100 --exposure 1000  # what-if
-```
-
-## Web app
-
-```bash
+# Chat broker (http://localhost:3000)
 pnpm web
-# http://localhost:3000
+
+# Terminal CLI
+pnpm cli list
+pnpm cli city Tokyo
+pnpm cli quote <slug> --side yes --budget 300 --exposure 10000
 ```
 
-The UI is two panes:
+`apps/web/.env.local` needs `DEEPSEEK_API_KEY` (the chat route uses `@ai-sdk/deepseek`).
 
-- **Workspace** (left). On first load, auto-creates a Polymarket trading wallet via the polymarket CLI, then shows a QR code + address for funding. Active markets and trades pin here. Wallet balance polls every 10 seconds.
-- **Chat** (right). Streams the broker's reasoning. Markdown-rendered. Tool result cards do not appear inline — they pin to the Workspace.
+## Trading flow
 
-### Trading flow
+Trades cost real USDC. The broker walks the user through it:
 
-1. Open the app. The Workspace creates a wallet if you don't have one.
-2. Send USDC to the **proxy address** shown (with `signature_type: proxy`, the default, this is where Polymarket holds collateral). Send a little MATIC to the signer EOA shown next to it.
-3. Tell the broker what you want to hedge (event + dollar amount + window). Example: _"Hedge $500 if BTC closes below $90k by year-end."_
-4. The broker finds a market, runs `compute_hedge_quote`, and pins the trade card.
-5. Confirm in chat ("place it"). The broker checks wallet status, runs approvals if needed (~6 on-chain transactions), and places the market order via `polymarket clob market-order`.
-6. Order receipt pins to the Workspace.
+1. `wallet_status` — if not configured, `setup_wallet` creates one and shows a funding QR.
+2. User sends USDC + a little MATIC (gas) to the proxy address on Polygon.
+3. `run_approvals` — one-time on-chain approvals so the CLOB can move USDC.
+4. Broker reads back the trade summary one more time, asks **"Place it?"**.
+5. Only after explicit confirmation: `place_order` with the right `clobTokenIds[]` and amount.
+6. On fill, surfaces orderId + filled amount and offers `get_positions` to verify.
 
-### Caveats
+It will never claim an order placed unless `place_order` returned an `orderId`.
 
-- **Real money.** Mainnet only — Polymarket has no testnet. Start with $1–$5 trades.
-- **Geoblock.** Polymarket geoblocks some jurisdictions (notably the US). The wallet panel surfaces this; trades will fail if you're blocked.
-- **Single wallet, single user.** The polymarket CLI manages one key in `~/.config/polymarket/config.json`. The web app is a self-hosted, single-user tool — don't expose it publicly.
-- **Min order size.** Most Polymarket markets have an `orderMinSize` of $1–$5.
+## Stack
 
-## Development
-
-```bash
-pnpm -r typecheck   # all workspaces
-pnpm -r build       # all workspaces
-```
-
-`@weather/core` shells out to the `polymarket` binary for both reads (markets, prices) and writes (wallet, approvals, orders). Override the binary path with `POLYMARKET_BIN=/path/to/polymarket` if needed.
-
-## Project name
-
-`weather-cli` is historical — the original scope was weather hedging. The broker now covers any Polymarket event. The package and repo names stay for continuity.
+- **Runtime** — Node 22, ESM, TypeScript 6
+- **Web** — Next.js 16, React 19, Tailwind 4, AI SDK 6, DeepSeek (`@ai-sdk/deepseek`), `qrcode.react`, `react-markdown`
+- **CLI** — Commander 14
+- **Core** — Zod 4 for parsing, `execa` to drive the `polymarket` binary
+- **Workspace** — pnpm workspaces (`apps/*`, `packages/*`)
