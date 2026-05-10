@@ -1,83 +1,86 @@
 @import "tailwindcss";
 
-:root {
-  color-scheme: dark;
+@layer base {
+  :root {
+    color-scheme: dark;
 
-  --bg: #0a0a0a;
-  --panel: #111111;
-  --panel-2: #161616;
-  --border: #232323;
-  --border-2: #1a1a1a;
-  --text: #e6e6e6;
-  --text-2: #c9c9c9;
-  --text-dim: #8a8a8a;
-  --text-faint: #525252;
-  --amber: #ffaa00;
-  --amber-dim: #b87800;
-  --cyan: #00ddff;
-  --green: #00d97e;
-  --red: #ff3b3b;
-  --grid-line: rgba(255, 255, 255, 0.012);
-  --send-text: #000000;
+    --bg: #0a0a0a;
+    --panel: #111111;
+    --panel-2: #161616;
+    --border: #232323;
+    --border-2: #1a1a1a;
+    --text: #e6e6e6;
+    --text-2: #c9c9c9;
+    --text-dim: #8a8a8a;
+    --text-faint: #525252;
+    --amber: #ffaa00;
+    --amber-dim: #b87800;
+    --cyan: #00ddff;
+    --green: #00d97e;
+    --red: #ff3b3b;
+    --grid-line: rgba(255, 255, 255, 0.012);
+    --send-text: #000000;
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+
+    --bg: #f7f4ec;
+    --panel: #ffffff;
+    --panel-2: #faf7ee;
+    --border: #d9d3c3;
+    --border-2: #e6e1d2;
+    --text: #0e0e0e;
+    --text-2: #2a2a2a;
+    --text-dim: #6b6b6b;
+    --text-faint: #9b9b9b;
+    --amber: #b87800;
+    --amber-dim: #8a5800;
+    --cyan: #00788e;
+    --green: #0e7d3f;
+    --red: #b32626;
+    --grid-line: rgba(0, 0, 0, 0.018);
+    --send-text: #ffffff;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 24px 24px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 0;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2c2c2c;
+  }
 }
 
-:root[data-theme="light"] {
-  color-scheme: light;
-
-  --bg: #f7f4ec;
-  --panel: #ffffff;
-  --panel-2: #faf7ee;
-  --border: #d9d3c3;
-  --border-2: #e6e1d2;
-  --text: #0e0e0e;
-  --text-2: #2a2a2a;
-  --text-dim: #6b6b6b;
-  --text-faint: #9b9b9b;
-  --amber: #b87800;
-  --amber-dim: #8a5800;
-  --cyan: #00788e;
-  --green: #0e7d3f;
-  --red: #b32626;
-  --grid-line: rgba(0, 0, 0, 0.018);
-  --send-text: #ffffff;
-}
-
-html,
-body {
-  height: 100%;
-}
-
-body {
-  font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--text);
-  background: var(--bg);
-  background-image:
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-  background-size: 24px 24px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 0;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #2c2c2c;
-}
-
-/* === Panels === */
-.t-panel {
+@layer components {
+  /* === Panels === */
+  .t-panel {
   background: var(--panel-2);
   border: 1px solid var(--border);
   padding: 12px;
@@ -507,4 +510,5 @@ body {
 .t-theme-toggle:hover {
   border-color: var(--amber-dim);
   color: var(--amber);
+}
 }
