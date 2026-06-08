@@ -1,7 +1,10 @@
 import { tool } from "ai";
 import { z } from "zod";
 import {
+  composeBasket,
+  computeBasisRisk,
   computeHedge,
+  estimateTriggerCorrelation,
   createWallet,
   fetchCityMarkets,
   fetchWeatherMarkets,
@@ -14,7 +17,7 @@ import {
   runApprovals,
   searchMarkets,
 } from "@weather/core";
-import type { Market } from "@weather/core";
+import type { BasketLeg, Market } from "@weather/core";
 
 const MAX_RESULTS = 8;
 
@@ -185,6 +188,164 @@ export const computeHedgeQuoteTool = tool({
   },
 });
 
+const factorSchema = z.object({
+  score: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe("0–1: how well this dimension matches the real loss."),
+  note: z.string().min(1).describe("One line justifying the score."),
+});
+
+export const estimateCorrelationTool = tool({
+  description:
+    "Derive the trigger correlation for a hedge by decomposing it instead of eyeballing one number. The market only pays on the client's loss if it matches on EVERY dimension at once, so scores multiply (a mismatch on any one compounds). Score each dimension 0–1 with a note: `geographic` (does the market's location match where the loss occurs?), `peril` (does it measure the same physical peril that drives the loss?), `threshold` (does its trigger level match where the loss actually bites?). Returns the combined correlation, an auto-written rationale, and the weakest link. Run this before assess_basis_risk whenever the correlation isn't obvious, then pass the returned value + rationale into assess_basis_risk.",
+  inputSchema: z.object({
+    geographic: factorSchema.describe(
+      "Location match — same site/metro = high, different region = low.",
+    ),
+    peril: factorSchema.describe(
+      "Peril match — same physical driver of the loss = high.",
+    ),
+    threshold: factorSchema.describe(
+      "Threshold match — market trigger level vs where the loss actually starts.",
+    ),
+  }),
+  execute: ({ geographic, peril, threshold }) => {
+    return {
+      estimate: estimateTriggerCorrelation({ geographic, peril, threshold }),
+    };
+  },
+});
+
+export const assessBasisRiskTool = tool({
+  description:
+    "Score how much of the client's REAL loss a hedge actually neutralizes — not just the payout/exposure ratio. Decomposes the gap into trigger correlation (basis risk), resolution timing vs the risk window, and payout adequacy. Returns the sized quote plus an effectiveness score, the dollars still exposed, and the dollars exposed purely to trigger mismatch. Run this after compute_hedge_quote whenever the market is a PROXY for the real loss (almost always). You must supply triggerCorrelation as an explicit, reasoned estimate of P(this market pays out | the client's loss actually happens) — never guess silently; state your reasoning in correlationRationale.",
+  inputSchema: z.object({
+    idOrSlug: z.string().describe("The market slug or ID to assess."),
+    side: z.enum(["Yes", "No"]).describe("Which outcome to BUY."),
+    budgetUsdc: z.number().positive().describe("USDC the client will spend."),
+    exposureValueUsdc: z
+      .number()
+      .positive()
+      .describe("Dollars at risk if the real loss event happens."),
+    lossEvent: z
+      .string()
+      .describe("The client's real loss in their words, e.g. 'warehouse road freezes shut'."),
+    windowStart: z
+      .string()
+      .describe("Start of the exposure window, ISO date (YYYY-MM-DD)."),
+    windowEnd: z
+      .string()
+      .describe("End of the exposure window, ISO date (YYYY-MM-DD)."),
+    triggerCorrelation: z
+      .number()
+      .min(0)
+      .max(1)
+      .describe(
+        "P(this market pays out | the client's loss event occurs), 0–1. 1 = the market trigger IS the loss; lower = looser proxy.",
+      ),
+    correlationRationale: z
+      .string()
+      .describe("One line justifying the triggerCorrelation estimate."),
+  }),
+  execute: async ({
+    idOrSlug,
+    side,
+    budgetUsdc,
+    exposureValueUsdc,
+    lossEvent,
+    windowStart,
+    windowEnd,
+    triggerCorrelation,
+    correlationRationale,
+  }) => {
+    const market = await getMarket(idOrSlug);
+    const quote = quoteFromMarket(market, side, budgetUsdc, exposureValueUsdc);
+    const basis = computeBasisRisk({
+      quote,
+      loss: { lossEvent, exposureValueUsdc, windowStart, windowEnd },
+      marketEndDate: market.endDate,
+      triggerCorrelation,
+      correlationRationale,
+    });
+    return {
+      market: {
+        id: market.id,
+        slug: market.slug,
+        question: market.question,
+        url: market.url,
+        endDate: market.endDate,
+      },
+      side,
+      quote,
+      basis,
+    };
+  },
+});
+
+export const composeBasketTool = tool({
+  description:
+    "When no single market tracks the client's loss well (a loose basis-risk verdict), spread the budget across 2–4 proxy markets that miss in different ways, to cover more of the real loss than any one market can. Budget is weighted toward the better-correlated legs. Each leg needs its own triggerCorrelation estimate and rationale. Combined coverage assumes the legs' misses are independent and is capped below 1 — surface that caveat to the client. Fetches live prices for each market.",
+  inputSchema: z.object({
+    totalBudgetUsdc: z
+      .number()
+      .positive()
+      .describe("Total USDC to spread across the basket."),
+    exposureValueUsdc: z
+      .number()
+      .positive()
+      .optional()
+      .describe("Dollars at risk, for combined coverage and residual."),
+    legs: z
+      .array(
+        z.object({
+          idOrSlug: z.string().describe("Market slug or ID for this leg."),
+          side: z.enum(["Yes", "No"]).describe("Outcome to buy for this leg."),
+          triggerCorrelation: z
+            .number()
+            .min(0)
+            .max(1)
+            .describe("P(this leg pays out | the real loss occurs), 0–1."),
+          correlationRationale: z
+            .string()
+            .describe("Why this leg is a useful proxy."),
+        }),
+      )
+      .min(2)
+      .max(4)
+      .describe("2–4 proxy legs that fail in different ways."),
+  }),
+  execute: async ({ totalBudgetUsdc, exposureValueUsdc, legs }) => {
+    const resolved: BasketLeg[] = await Promise.all(
+      legs.map(async (l): Promise<BasketLeg> => {
+        const market = await getMarket(l.idOrSlug);
+        const idx = market.outcomes.findIndex(
+          (o) => o.toLowerCase() === l.side.toLowerCase(),
+        );
+        const price = market.outcomePrices[idx];
+        if (price === undefined) {
+          throw new Error(
+            `market ${l.idOrSlug} has no '${l.side}' outcome price`,
+          );
+        }
+        return {
+          marketId: market.id,
+          question: market.question,
+          side: l.side,
+          priceUsdc: price,
+          triggerCorrelation: l.triggerCorrelation,
+          correlationRationale: l.correlationRationale,
+          orderMinSizeUsdc: market.orderMinSize,
+        };
+      }),
+    );
+    return {
+      plan: composeBasket(resolved, totalBudgetUsdc, exposureValueUsdc),
+    };
+  },
+});
+
 export const whatIfTool = tool({
   description:
     "Compute a quote from raw inputs without fetching a market. Useful for what-if scenarios.",
@@ -315,6 +476,9 @@ export const brokerTools = {
   list_cities: listCitiesTool,
   get_market: getMarketTool,
   compute_hedge_quote: computeHedgeQuoteTool,
+  estimate_correlation: estimateCorrelationTool,
+  assess_basis_risk: assessBasisRiskTool,
+  compose_basket: composeBasketTool,
   what_if: whatIfTool,
   wallet_status: walletStatusTool,
   setup_wallet: setupWalletTool,

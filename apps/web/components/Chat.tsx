@@ -6,7 +6,7 @@ import type { UIMessage } from "ai";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import Markdown from "react-markdown";
-import type { HedgeQuote } from "@weather/core";
+import type { BasisAssessment, HedgeQuote } from "@weather/core";
 import { Workspace } from "@/components/Workspace";
 import type { Pin } from "@/components/Workspace";
 
@@ -27,6 +27,20 @@ interface QuoteToolOutput {
   market: MarketSummary;
   side: "Yes" | "No";
   quote: HedgeQuote;
+}
+
+interface BasisToolOutput {
+  market: MarketSummary;
+  side: "Yes" | "No";
+  quote: HedgeQuote;
+  basis: BasisAssessment;
+}
+
+interface BasketToolOutput {
+  plan: {
+    allocations: unknown[];
+    combinedTriggerCoverage: number;
+  };
 }
 
 interface OrderToolOutput {
@@ -96,6 +110,37 @@ function deriveState(messages: UIMessage[]): {
         addHint(
           m.id,
           `pinned trade · ${out.side} · $${out.quote.costBudgetUsdc.toFixed(0)}`,
+        );
+      } else if (part.type === "tool-estimate_correlation") {
+        if (part.state !== "output-available") continue;
+        const out = part.output as {
+          estimate: { value: number; weakest: string };
+        };
+        addHint(
+          m.id,
+          `correlation ~${Math.round(out.estimate.value * 100)}% · weakest: ${out.estimate.weakest}`,
+        );
+      } else if (part.type === "tool-assess_basis_risk") {
+        if (part.state !== "output-available") continue;
+        const out = part.output as BasisToolOutput;
+        pins.push({
+          kind: "basis",
+          key: `${m.id}-${partIdx}`,
+          market: out.market,
+          side: out.side,
+          quote: out.quote,
+          basis: out.basis,
+        });
+        addHint(
+          m.id,
+          `basis · ${out.basis.verdict} · ${Math.round(out.basis.effectivenessScore * 100)}% effective`,
+        );
+      } else if (part.type === "tool-compose_basket") {
+        if (part.state !== "output-available") continue;
+        const out = part.output as BasketToolOutput;
+        addHint(
+          m.id,
+          `basket · ${out.plan.allocations.length} legs · ${Math.round(out.plan.combinedTriggerCoverage * 100)}% coverage`,
         );
       } else if (part.type === "tool-what_if") {
         if (part.state !== "output-available") continue;

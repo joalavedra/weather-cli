@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import {
+  computeBasisRisk,
   computeHedge,
   fetchCityMarkets,
   fetchWeatherMarkets,
@@ -8,7 +9,11 @@ import {
   listAvailableCities,
   quoteFromMarket,
 } from "@weather/core";
-import type { ClassifiedMarket, HedgeQuote } from "@weather/core";
+import type {
+  BasisAssessment,
+  ClassifiedMarket,
+  HedgeQuote,
+} from "@weather/core";
 
 const program = new Command();
 program
@@ -66,6 +71,24 @@ function printQuote(quote: HedgeQuote): void {
       `Coverage ratio:   ${(quote.coverageRatio * 100).toFixed(1)}% of exposure`,
     );
   }
+  process.stdout.write(`${lines.join("\n")}\n`);
+}
+
+function printBasis(basis: BasisAssessment): void {
+  if (isJson()) {
+    process.stdout.write(`${JSON.stringify(basis, null, 2)}\n`);
+    return;
+  }
+  const lines = [
+    `Verdict:          ${basis.verdict.toUpperCase()}`,
+    `Effectiveness:    ${(basis.effectivenessScore * 100).toFixed(0)}% of the real loss neutralized`,
+    `Trigger corr.:    ${(basis.triggerCorrelation * 100).toFixed(0)}%  (${basis.correlationRationale})`,
+    `Tenor fit:        ${(basis.tenorAlignment * 100).toFixed(0)}%`,
+    `Payout coverage:  ${(basis.payoutCoverage * 100).toFixed(0)}%`,
+    `Residual risk:    $${basis.residualRiskUsdc.toFixed(2)} still exposed`,
+    `Basis risk:       $${basis.basisRiskUsdc.toFixed(2)} from trigger mismatch`,
+  ];
+  for (const w of basis.warnings) lines.push(`  ! ${w}`);
   process.stdout.write(`${lines.join("\n")}\n`);
 }
 
@@ -154,6 +177,65 @@ program
       const quote = quoteFromMarket(market, side, budget, exposure);
       if (!isJson()) process.stdout.write(`Hedge for: ${market.question}\n\n`);
       printQuote(quote);
+    },
+  );
+
+program
+  .command("basis <idOrSlug>")
+  .description("Quote a market AND score its basis risk against your real loss.")
+  .requiredOption("--side <yesOrNo>", "outcome to buy (Yes or No)")
+  .requiredOption("--budget <usdc>", "USDC you'd spend on the hedge")
+  .requiredOption("--exposure <usdc>", "dollars at risk if the loss happens")
+  .requiredOption("--loss <text>", "your real loss in plain words")
+  .requiredOption("--window-start <date>", "exposure window start (YYYY-MM-DD)")
+  .requiredOption("--window-end <date>", "exposure window end (YYYY-MM-DD)")
+  .requiredOption("--correlation <0to1>", "P(market pays | your loss happens)")
+  .requiredOption("--rationale <text>", "why that correlation estimate holds")
+  .action(
+    async (
+      idOrSlug: string,
+      opts: {
+        side: string;
+        budget: string;
+        exposure: string;
+        loss: string;
+        windowStart: string;
+        windowEnd: string;
+        correlation: string;
+        rationale: string;
+      },
+    ) => {
+      const market = await getMarket(idOrSlug);
+      const side =
+        opts.side.toLowerCase() === "yes"
+          ? "Yes"
+          : opts.side.toLowerCase() === "no"
+            ? "No"
+            : null;
+      if (!side) throw new Error(`--side must be 'yes' or 'no', got ${opts.side}`);
+      const exposure = Number.parseFloat(opts.exposure);
+      const quote = quoteFromMarket(
+        market,
+        side,
+        Number.parseFloat(opts.budget),
+        exposure,
+      );
+      const basis = computeBasisRisk({
+        quote,
+        loss: {
+          lossEvent: opts.loss,
+          exposureValueUsdc: exposure,
+          windowStart: opts.windowStart,
+          windowEnd: opts.windowEnd,
+        },
+        marketEndDate: market.endDate,
+        triggerCorrelation: Number.parseFloat(opts.correlation),
+        correlationRationale: opts.rationale,
+      });
+      if (!isJson()) process.stdout.write(`Hedge for: ${market.question}\n\n`);
+      printQuote(quote);
+      if (!isJson()) process.stdout.write("\n");
+      printBasis(basis);
     },
   );
 

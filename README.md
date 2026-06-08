@@ -44,9 +44,11 @@ weather-cli/
 │   ├── polymarket.ts     # search/get/list — wraps the `polymarket` CLI binary
 │   ├── weather.ts        # category + city classification, weather-relevant filter
 │   ├── hedge.ts          # computeHedge / quoteFromMarket — sizing + ROI math
+│   ├── basis.ts          # computeBasisRisk / composeBasket — basis-risk scoring
+│   ├── elicit.ts         # estimateTriggerCorrelation — decomposed correlation
 │   └── trading.ts        # wallet status, approvals, market orders, positions
 ├── apps/cli/             # @weather/cli — `weather` Commander CLI
-│   └── src/index.ts      # list / city / cities / show / quote / hedge
+│   └── src/index.ts      # list / city / cities / show / quote / basis / hedge
 └── apps/web/             # @weather/web — Next.js 16 chat broker
     ├── app/api/chat/     # streaming chat route (DeepSeek + AI SDK tools)
     ├── app/api/wallet/   # wallet status / create / approvals endpoints
@@ -55,7 +57,24 @@ weather-cli/
     └── components/       # Chat, WalletPanel, Workspace
 ```
 
-The broker exposes these tools to the model: `search_weather_markets`, `list_cities`, `search_markets`, `get_market`, `compute_hedge_quote`, `wallet_status`, `setup_wallet`, `run_approvals`, `place_order`, `get_positions`, `suggest_replies`.
+The broker exposes these tools to the model: `search_weather_markets`, `list_cities`, `search_markets`, `get_market`, `compute_hedge_quote`, `estimate_correlation`, `assess_basis_risk`, `compose_basket`, `wallet_status`, `setup_wallet`, `run_approvals`, `place_order`, `get_positions`, `suggest_replies`.
+
+## Basis risk
+
+A Polymarket market is almost never the exact thing a client loses money over — a liquid "Newark temp < 20°F" market is a *proxy* for "the road to my NJ warehouse freezes shut." The gap between the two is **basis risk**, and pretending it away sells a hedge that doesn't pay when the client actually gets hurt.
+
+`computeBasisRisk` scores how much of the client's *real* loss a hedge neutralizes, decomposing the gap into three factors: **trigger correlation** (an explicit, reasoned estimate of P(market pays out | the loss happens) — never silently defaulted), **tenor alignment** (does the market resolve inside the exposure window?), and **payout coverage**. It returns an effectiveness score and verdict (`tight` / `workable` / `loose`), the dollars still exposed, and the dollars exposed purely to trigger mismatch.
+
+Rather than eyeball the trigger correlation, `estimateTriggerCorrelation` (in `elicit.ts`) decomposes it into the dimensions a market can mismatch the loss on — **geographic**, **peril**, and **threshold** match — and multiplies them, since the market only pays on the loss if it matches on all three at once. The returned rationale names the weakest link, so a `loose` verdict points straight at why.
+
+When no single market scores well, `composeBasket` spreads a budget across proxies that miss in different ways. Combined coverage assumes the legs' misses are independent and is capped below 100%, so a basket never poses as a perfect hedge.
+
+```bash
+pnpm cli basis <slug> --side yes --budget 300 --exposure 10000 \
+  --loss "warehouse road freezes shut" \
+  --window-start 2026-01-01 --window-end 2026-01-31 \
+  --correlation 0.7 --rationale "Newark temp tracks the warehouse road"
+```
 
 ## Running it
 
