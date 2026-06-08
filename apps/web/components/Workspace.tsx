@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { HedgeQuote } from "@weather/core";
+import type { BasisAssessment, HedgeQuote } from "@weather/core";
 import { WalletPanel } from "@/components/WalletPanel";
 
 interface MarketSummary {
@@ -25,6 +25,14 @@ export type Pin =
       market: MarketSummary;
       side: "Yes" | "No";
       quote: HedgeQuote;
+    }
+  | {
+      kind: "basis";
+      key: string;
+      market: MarketSummary;
+      side: "Yes" | "No";
+      quote: HedgeQuote;
+      basis: BasisAssessment;
     }
   | {
       kind: "order";
@@ -142,6 +150,55 @@ function QuoteBlock({
   );
 }
 
+const VERDICT_CLS: Record<BasisAssessment["verdict"], string> = {
+  tight: "pos",
+  workable: "amber",
+  loose: "neg",
+};
+
+function pct(x: number): string {
+  return `${Math.round(x * 100)}%`;
+}
+
+function BasisBlock({ basis }: { basis: BasisAssessment }) {
+  const cls = VERDICT_CLS[basis.verdict];
+  const rows: Array<[string, string, string?]> = [
+    ["Effectiveness", pct(basis.effectivenessScore), cls],
+    ["Verdict", basis.verdict.toUpperCase(), cls],
+    ["Trigger corr.", pct(basis.triggerCorrelation)],
+    ["Tenor fit", pct(basis.tenorAlignment)],
+    ["Coverage", pct(basis.payoutCoverage)],
+    ["Residual risk", fmtUsd(basis.residualRiskUsdc), "neg"],
+    ["Basis risk", fmtUsd(basis.basisRiskUsdc), "amber"],
+  ];
+  return (
+    <div className="t-quote mt-3">
+      {rows.map(([label, value, rowCls]) => (
+        <div key={label} className="t-row">
+          <span className="k">{label}</span>
+          <span className={`v ${rowCls ?? ""}`}>{value}</span>
+        </div>
+      ))}
+      <div className="text-[10px] text-[var(--text-dim)] mt-2 leading-snug">
+        {basis.correlationRationale}
+      </div>
+      {basis.warnings.length > 0 ? (
+        <ul className="mt-2 space-y-1">
+          {basis.warnings.map((w) => (
+            <li
+              key={w}
+              className="text-[10px] text-[var(--amber)] leading-snug flex gap-1.5"
+            >
+              <span>!</span>
+              <span>{w}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function ActiveCard({ active }: { active: Pin }) {
   if (active.kind === "market") {
     return (
@@ -166,6 +223,22 @@ function ActiveCard({ active }: { active: Pin }) {
         </div>
         <MarketBlock market={active.market} />
         <QuoteBlock side={active.side} quote={active.quote} />
+        <a className="t-link" href={active.market.url} target="_blank" rel="noreferrer">
+          Open on Polymarket →
+        </a>
+      </div>
+    );
+  }
+  if (active.kind === "basis") {
+    return (
+      <div className="t-panel">
+        <div className="t-panel-label mb-3">
+          <span className="t-trade-tag">Hedge + basis risk</span>
+          <span className="t-status-cyan">{active.basis.verdict}</span>
+        </div>
+        <MarketBlock market={active.market} />
+        <QuoteBlock side={active.side} quote={active.quote} />
+        <BasisBlock basis={active.basis} />
         <a className="t-link" href={active.market.url} target="_blank" rel="noreferrer">
           Open on Polymarket →
         </a>
@@ -224,6 +297,17 @@ function HistoryRow({ pin }: { pin: Pin }) {
         <span className="text-[var(--text-faint)]">›</span>
         <span className="text-[var(--amber)] tabular-nums">
           {pin.side.toUpperCase()} {fmtUsdShort(pin.quote.costBudgetUsdc)}
+        </span>
+        <span className="truncate">{pin.market.question}</span>
+      </li>
+    );
+  }
+  if (pin.kind === "basis") {
+    return (
+      <li className="text-[10.5px] text-[var(--text-dim)] truncate flex items-center gap-2">
+        <span className="text-[var(--text-faint)]">›</span>
+        <span className="text-[var(--amber)] tabular-nums">
+          {pct(pin.basis.effectivenessScore)} eff
         </span>
         <span className="truncate">{pin.market.question}</span>
       </li>
