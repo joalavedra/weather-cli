@@ -47,9 +47,50 @@ Every contract settles on a specific observation — `Central Park, New York`, `
 
 This isn't decoration. The distance between that sensor and your front door is the geographic half of basis risk. A client who doesn't know where their cover is measured can't judge it, and public prediction markets have already seen settlement sources gamed.
 
+## Fitting the loss instead of guessing it
+
+The hardest number in the system is how much a business actually loses to weather. Asking the owner gets a figure they half remember. Their own daily revenue answers it.
+
+```
+$ weather fit --revenue takings.csv --location Chicago
+
+Paired days:      884 of 884 revenue rows
+
+Loss starts:      below 73.7°F
+Sensitivity:      $134 per °F
+Baseline revenue: $5617/day
+Explained:        91% of revenue swings
+```
+
+The model is a hockey stick — revenue flat while the weather is fine, then falling at a constant rate past a threshold — because that is how these businesses describe the loss, and because its two parameters are exactly what cover needs: where the trigger belongs, and what a degree is worth.
+
+The `Explained` figure is the one that decides whether to buy at all. At 91%, weather is the business. At 9%, something else is moving the till and cover would hedge a risk they don't have — the tool says so rather than selling anyway.
+
 ## Basis risk
 
 A "Chicago Midway high < 70°" contract is a proxy for "nobody sat on my patio." The gap between the two is **basis risk**, and pretending it away sells cover that doesn't pay when the client actually gets hurt.
+
+### Measured, not estimated
+
+Scoring that gap by reasoning about it is a guess about something history can answer directly:
+
+```
+$ weather station-basis --station 41.786,-87.752 --premises 41.93,-87.64 \
+    --threshold 72 --direction below
+
+Days compared:      1461
+Correlation:        0.991
+Typical gap:        2.5°F (worst 14.3°F)
+Trigger corr.:      0.896
+Loss days:          991
+Paid when fine:     0 days
+```
+
+Midway settles the Chicago contracts; the bar is nine miles away on the lakefront. The two track at **0.991 correlation** — which reads like a perfect hedge — but the contract crosses the trigger on only **89.6%** of the days the bar is actually hurting. A tenth of the loss days are uncovered, and no amount of reasoning about "same metro, same peril" would have surfaced that.
+
+Correlation describes the whole distribution. A trigger only cares about one edge of it. That difference is the product.
+
+One caveat worth stating: Open-Meteo's archive is gridded reanalysis, not the raw NWS station record the contract settles on. It measures the relationship between two places well, but it is not the settlement value itself — two points inside one grid cell will read as identical.
 
 `computeBasisRisk` scores how much of the *real* loss a hedge neutralizes, decomposing it into **trigger correlation** (an explicit, reasoned estimate of P(contract pays | the loss happens) — never silently defaulted), **tenor alignment** (does it resolve inside the exposure window?), and **payout coverage**. It returns an effectiveness score, a verdict (`tight` / `workable` / `loose`), the dollars still exposed, and the dollars exposed purely to trigger mismatch.
 
@@ -70,6 +111,9 @@ weather-cli/
 ├── packages/core/        # @weather/core — shared domain logic
 │   ├── types.ts          # venue-neutral Market, Strike, Settlement, Ladder
 │   ├── weather.ts        # peril / location / station taxonomy, shared by venues
+│   ├── observations.ts   # Open-Meteo history + geocoding (free, no key)
+│   ├── loss.ts           # fit a business's loss curve from its own revenue
+│   ├── geobasis.ts       # measured station-vs-premises trigger correlation
 │   ├── kalshi.ts         # Kalshi adapter (public HTTP, no credentials)
 │   ├── polymarket.ts     # Polymarket adapter (wraps the `polymarket` CLI)
 │   ├── venue.ts          # Venue interface + registry + routing
@@ -81,7 +125,7 @@ weather-cli/
 └── apps/web/             # @weather/web — Next.js 16 chat broker
 ```
 
-Tools exposed to the model: `find_cover`, `list_events`, `get_ladder`, `find_contracts`, `get_market`, `compute_hedge_quote`, `estimate_correlation`, `assess_basis_risk`, `compose_basket`, `what_if`, `wallet_status`, `setup_wallet`, `run_approvals`, `place_order`, `get_positions`, `suggest_replies`.
+Tools exposed to the model: `find_cover`, `list_events`, `get_ladder`, `find_contracts`, `get_market`, `compute_hedge_quote`, `estimate_correlation`, `measure_geographic_basis`, `assess_basis_risk`, `compose_basket`, `what_if`, `wallet_status`, `setup_wallet`, `run_approvals`, `place_order`, `get_positions`, `suggest_replies`.
 
 ## Running it
 
@@ -106,6 +150,10 @@ weather ladder KXHIGHCHI-26AUG02                     # the strike ladder
 weather show KXHIGHCHI-26AUG02-B73.5                 # one contract + its rules
 weather contracts --location Miami --peril rain      # skip straight to contracts
 
+weather fit --revenue takings.csv --location Chicago       # fit your loss curve
+weather station-basis --station "Chicago Midway" --premises "41.93,-87.64" \
+  --threshold 72 --direction below                         # measure the real basis
+
 weather quote KXHIGHCHI-26AUG02-B73.5 --side yes --budget 300 --exposure 10000
 
 weather basis KXHIGHCHI-26AUG02-B73.5 --side yes --budget 300 --exposure 10000 \
@@ -127,5 +175,6 @@ For Polymarket, trades cost real USDC and the broker walks through wallet setup,
 - **Runtime** — Node 22, ESM, TypeScript 6
 - **Web** — Next.js 16, React 19, Tailwind 4, AI SDK 6, DeepSeek
 - **CLI** — Commander 14
-- **Core** — Zod 4, native `fetch` for Kalshi, `execa` for the Polymarket binary
+- **Data** — Kalshi (contracts), Open-Meteo archive + geocoding (weather history), both keyless
+- **Core** — Zod 4, native `fetch`, `execa` for the Polymarket binary
 - **Checks** — oxlint, `tsc --noEmit`, vitest

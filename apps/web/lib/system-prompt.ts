@@ -37,7 +37,7 @@ The contract almost never resolves on exactly the thing the client loses money o
 
 After sizing a quote, run \`assess_basis_risk\`. It decomposes into three things:
 
-1. **Trigger correlation** — P(this contract pays | the client's loss actually happens). Don't eyeball it. Call \`estimate_correlation\` first and pass its value and rationale straight through.
+1. **Trigger correlation** — P(this contract pays | the client's loss actually happens). Don't eyeball it. Measure it if you can, reason about it only if you can't (see below).
 2. **Tenor alignment** — does the contract resolve inside the risk window? You supply \`windowStart\`/\`windowEnd\`.
 3. **Payout coverage** — does the payout cover the dollars at risk?
 
@@ -49,7 +49,15 @@ You cannot score basis risk without the client's loss function. Gather it one qu
 2. **Dollar exposure** — what they lose when it happens.
 3. **The window** — the dates they're exposed.
 
-Then call \`estimate_correlation\`, which makes you score **geographic** (does the station match where the loss occurs?), **peril** (same physical driver?) and **threshold** (does the strike match where the loss actually starts?) and multiplies them, because the contract only pays on the loss if it matches on all three at once. Feed the result into \`assess_basis_risk\`. A \`loose\` verdict is your cue to find a better contract or build a basket.
+## Measure the correlation before you estimate it
+
+Once you know the settlement station and roughly where the business is, call \`measure_geographic_basis\`. It compares four years of daily weather at both places and returns the **measured** trigger correlation: the share of days the business was actually hurting on which the station also crossed the trigger.
+
+Use that number. It routinely disagrees with intuition in a way no amount of reasoning recovers — a station can track the premises at 0.99 correlation and still miss a sixth of the loss days, because correlation measures the whole distribution while a trigger only cares about one edge of it. Quote the average gap and the worst day too; a client hearing "usually within 3°, but 14° apart on the worst day" understands their cover in a way a score doesn't convey.
+
+Fall back to \`estimate_correlation\` only when you can't measure — an unlocatable station, a peril with no observation series (hurricane landfall, tornado counts), or a loss that isn't really about weather at the premises. It makes you score **geographic**, **peril** and **threshold** match and multiplies them, since the contract only pays on the loss if it matches on all three at once.
+
+Either way, feed the value and its rationale into \`assess_basis_risk\`. A \`loose\` verdict is your cue to find a better contract or build a basket.
 
 Surface the effectiveness score, the **residual risk** (dollars still exposed) and the **basis risk** (dollars exposed purely to trigger mismatch).
 

@@ -1,15 +1,25 @@
 #!/usr/bin/env node
+import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import {
+  alignSamples,
   computeBasisRisk,
   computeHedge,
+  dailyHistory,
+  describeFit,
+  describeGeoBasis,
+  fitLossCurve,
+  geocode,
   getVenue,
   kalshi,
+  measureGeographicBasis,
   quoteFromMarket,
 } from "@weather/core";
 import type {
   BasisAssessment,
   CoverQuery,
+  GeoPoint,
+  RevenueDay,
   HedgeQuote,
   Ladder,
   Market,
@@ -317,6 +327,135 @@ program
       printQuote(quote);
       if (!isJson()) process.stdout.write("\n");
       printBasis(basis);
+    },
+  );
+
+/**
+ * Parse a `date,revenue` CSV export. Deliberately minimal: this is the shape
+ * every POS export (Square, Toast, Shopify, Stripe) can produce, and asking for
+ * anything richer puts a data-cleaning chore between an owner and an answer.
+ */
+function parseRevenueCsv(text: string): RevenueDay[] {
+  const rows: RevenueDay[] = [];
+  for (const line of text.split("\n")) {
+    const [rawDate, rawRevenue] = line.split(",", 2);
+    const date = rawDate?.trim();
+    const revenue = Number.parseFloat(rawRevenue ?? "");
+    if (date === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    if (!Number.isFinite(revenue)) continue;
+    rows.push({ date, revenue });
+  }
+  if (rows.length === 0) {
+    throw new Error("no usable rows found — expected lines of the form 2026-07-01,4820.50");
+  }
+  return rows;
+}
+
+async function resolvePoint(place: string): Promise<GeoPoint> {
+  const coords = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(place.trim());
+  if (coords) {
+    return { latitude: Number(coords[1]), longitude: Number(coords[2]), name: place };
+  }
+  const point = await geocode(place);
+  if (!point) throw new Error(`could not find a place called "${place}"`);
+  return point;
+}
+
+program
+  .command("fit")
+  .description("Fit a loss curve from your own daily revenue against the weather.")
+  .requiredOption("--revenue <csv>", "path to a date,revenue CSV")
+  .requiredOption("--location <place>", "where the business is (name or lat,lon)")
+  .option("--peril <name>", "which driver to test against", "high_temp")
+  .option("--direction <belowOrAbove>", "force a direction instead of testing both")
+  .action(
+    async (opts: {
+      revenue: string;
+      location: string;
+      peril: string;
+      direction?: string;
+    }) => {
+      const peril = parsePeril(opts.peril) ?? "high_temp";
+      const rows = parseRevenueCsv(await readFile(opts.revenue, "utf8"));
+      const point = await resolvePoint(opts.location);
+      const dates = rows.map((r) => r.date).toSorted();
+      const [series] = await dailyHistory({
+        points: [point],
+        start: dates[0] ?? "",
+        end: dates.at(-1) ?? "",
+        peril,
+      });
+      if (!series) throw new Error("no observations returned for that location");
+      const samples = alignSamples(rows, series);
+      const direction =
+        opts.direction === "below" || opts.direction === "above" ? opts.direction : undefined;
+      const curve = fitLossCurve(samples, series.unit, direction);
+      if (isJson()) return emitJson({ point, curve, describe: describeFit(curve) });
+      process.stdout.write(`Business at:      ${point.name ?? opts.location}\n`);
+      process.stdout.write(`Paired days:      ${curve.observations} of ${rows.length} revenue rows\n\n`);
+      process.stdout.write(`Loss starts:      ${curve.direction} ${curve.threshold}${curve.unit === "F" ? "°F" : ""}\n`);
+      process.stdout.write(`Sensitivity:      $${curve.slopePerUnit.toFixed(0)} per ${curve.unit === "F" ? "°F" : "unit"}\n`);
+      process.stdout.write(`Baseline revenue: $${curve.baseline.toFixed(0)}/day\n`);
+      process.stdout.write(`Explained:        ${(curve.rSquared * 100).toFixed(0)}% of revenue swings\n\n`);
+      process.stdout.write(`${describeFit(curve)}\n`);
+    },
+  );
+
+program
+  .command("station-basis")
+  .description("Measure how well a settlement station tracks your actual location.")
+  .requiredOption("--station <place>", "the contract's station (name or lat,lon)")
+  .requiredOption("--premises <place>", "your location (name or lat,lon)")
+  .requiredOption("--threshold <value>", "the trigger level")
+  .option("--direction <belowOrAbove>", "which side hurts", "below")
+  .option("--peril <name>", "driver to compare", "high_temp")
+  .option("--start <date>", "history start (YYYY-MM-DD)", "2022-01-01")
+  .option("--end <date>", "history end (YYYY-MM-DD)", "2025-12-31")
+  .action(
+    async (opts: {
+      station: string;
+      premises: string;
+      threshold: string;
+      direction: string;
+      peril: string;
+      start: string;
+      end: string;
+    }) => {
+      if (opts.direction !== "below" && opts.direction !== "above") {
+        throw new Error(`--direction must be 'below' or 'above', got ${opts.direction}`);
+      }
+      const [station, premises] = await Promise.all([
+        resolvePoint(opts.station),
+        resolvePoint(opts.premises),
+      ]);
+      const [stationSeries, premisesSeries] = await dailyHistory({
+        points: [station, premises],
+        start: opts.start,
+        end: opts.end,
+        peril: parsePeril(opts.peril) ?? "high_temp",
+      });
+      if (!stationSeries || !premisesSeries) {
+        throw new Error("the archive returned no observations for those points");
+      }
+      const measurement = measureGeographicBasis({
+        station: stationSeries,
+        premises: premisesSeries,
+        threshold: Number.parseFloat(opts.threshold),
+        direction: opts.direction,
+      });
+      if (isJson()) {
+        return emitJson({ station, premises, measurement, describe: describeGeoBasis(measurement) });
+      }
+      const unit = measurement.unit === "F" ? "°F" : "";
+      process.stdout.write(`Station:            ${station.name ?? opts.station}\n`);
+      process.stdout.write(`Premises:           ${premises.name ?? opts.premises}\n`);
+      process.stdout.write(`Days compared:      ${measurement.days}\n\n`);
+      process.stdout.write(`Correlation:        ${measurement.correlation.toFixed(3)}\n`);
+      process.stdout.write(`Typical gap:        ${measurement.meanAbsDifference.toFixed(1)}${unit} (worst ${measurement.maxAbsDifference.toFixed(1)}${unit})\n`);
+      process.stdout.write(`Trigger corr.:      ${measurement.triggerCorrelation.toFixed(3)}  <- measured, feed this to \`basis\`\n`);
+      process.stdout.write(`Loss days:          ${measurement.lossDays}\n`);
+      process.stdout.write(`Paid when fine:     ${measurement.falsePositiveDays} days\n\n`);
+      process.stdout.write(`${describeGeoBasis(measurement)}\n`);
     },
   );
 

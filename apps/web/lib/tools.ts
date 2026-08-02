@@ -4,9 +4,13 @@ import {
   composeBasket,
   computeBasisRisk,
   computeHedge,
+  dailyHistory,
+  describeGeoBasis,
   estimateTriggerCorrelation,
   createWallet,
+  geocode,
   getPositions,
+  measureGeographicBasis,
   getVenue,
   getWalletStatus,
   kalshi,
@@ -14,7 +18,7 @@ import {
   quoteFromMarket,
   runApprovals,
 } from "@weather/core";
-import type { BasketLeg, Market, Peril } from "@weather/core";
+import type { BasketLeg, GeoPoint, Market, Peril } from "@weather/core";
 
 const MAX_RESULTS = 8;
 
@@ -29,6 +33,25 @@ const PERILS = [
 ] as const satisfies readonly Peril[];
 
 const perilSchema = z.enum(PERILS);
+
+/**
+ * How far back to look when measuring station-vs-premises basis. Four years is
+ * enough to accumulate loss days at most thresholds without making the archive
+ * request slow.
+ */
+const BASIS_HISTORY_START = "2022-01-01";
+const BASIS_HISTORY_END = "2025-12-31";
+
+/** Accept either a place name or a raw "lat,lon" pair. */
+async function resolvePoint(place: string): Promise<GeoPoint> {
+  const coords = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(place.trim());
+  if (coords) {
+    return { latitude: Number(coords[1]), longitude: Number(coords[2]), name: place };
+  }
+  const point = await geocode(place);
+  if (!point) throw new Error(`could not find a place called "${place}"`);
+  return point;
+}
 
 /** Resolve a contract id through the default venue. */
 async function fetchMarket(id: string): Promise<Market> {
@@ -211,6 +234,49 @@ export const estimateCorrelationTool = tool({
   execute: ({ geographic, peril, threshold }) => {
     return {
       estimate: estimateTriggerCorrelation({ geographic, peril, threshold }),
+    };
+  },
+});
+
+export const measureGeographicBasisTool = tool({
+  description:
+    "Measure — from years of actual weather history — how well a contract's settlement station tracks the client's own location. Returns the REAL trigger correlation: the share of days the business was actually hurting on which the station also crossed the trigger. Prefer this over estimate_correlation's geographic factor whenever you know both places, because a station can correlate at 0.99 and still miss a sixth of the loss days, and no amount of reasoning will surface that. Feed the returned triggerCorrelation straight into assess_basis_risk.",
+  inputSchema: z.object({
+    station: z
+      .string()
+      .describe("The contract's settlement station, from `settlesAt` — a place name or 'lat,lon'."),
+    premises: z.string().describe("Where the business actually is — a place name or 'lat,lon'."),
+    threshold: z.number().describe("The trigger level, in the contract's unit."),
+    direction: z
+      .enum(["below", "above"])
+      .describe("Which side hurts the business: 'below' for cold/dry, 'above' for hot/wet."),
+    peril: perilSchema.describe("The physical driver being compared."),
+  }),
+  execute: async ({ station, premises, threshold, direction, peril }) => {
+    const [stationPoint, premisesPoint] = await Promise.all([
+      resolvePoint(station),
+      resolvePoint(premises),
+    ]);
+    const [stationSeries, premisesSeries] = await dailyHistory({
+      points: [stationPoint, premisesPoint],
+      start: BASIS_HISTORY_START,
+      end: BASIS_HISTORY_END,
+      peril,
+    });
+    if (!stationSeries || !premisesSeries) {
+      throw new Error("the weather archive returned no observations for those locations");
+    }
+    const measurement = measureGeographicBasis({
+      station: stationSeries,
+      premises: premisesSeries,
+      threshold,
+      direction,
+    });
+    return {
+      station: stationPoint,
+      premises: premisesPoint,
+      measurement,
+      summary: describeGeoBasis(measurement),
     };
   },
 });
@@ -466,6 +532,7 @@ export const brokerTools = {
   get_market: getMarketTool,
   compute_hedge_quote: computeHedgeQuoteTool,
   estimate_correlation: estimateCorrelationTool,
+  measure_geographic_basis: measureGeographicBasisTool,
   assess_basis_risk: assessBasisRiskTool,
   compose_basket: composeBasketTool,
   what_if: whatIfTool,
