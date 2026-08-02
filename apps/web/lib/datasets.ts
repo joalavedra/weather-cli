@@ -13,11 +13,22 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { parseRevenueCsv } from "@weather/core";
 import type { RevenueDay } from "@weather/core";
 
-const DATA_DIR = process.env["REVENUE_DATA_DIR"] ?? path.join(process.cwd(), ".data", "revenue");
+/**
+ * Where uploaded revenue lands.
+ *
+ * The system temp directory rather than the project directory, because a
+ * serverless filesystem is read-only everywhere else. On Vercel that makes
+ * storage per-instance and ephemeral: an upload and a later tool call can land
+ * on different lambdas, and the second one won't find the dataset. Set
+ * `REVENUE_DATA_DIR` to a persistent path when running somewhere with a disk.
+ */
+const DATA_DIR =
+  process.env["REVENUE_DATA_DIR"] ?? path.join(os.tmpdir(), "weather-cover", "revenue");
 
 /** Rows below this can't support a loss fit, so reject at the door. */
 const MIN_ROWS = 30;

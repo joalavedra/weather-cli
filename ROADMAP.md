@@ -38,7 +38,8 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 
 - **Privacy / pooling.** Public orderbooks can dox a business's hedge. Mitigation: route pooled positions through backend wallets so individual exposure isn't legible. Parked, kept here so it isn't lost.
 
-- Uploaded revenue is stored unencrypted on the server's disk with no user model, no expiry and no access control — the id is the only thing gating it. Fine for a single-tenant demo, not for real clients.
+- Uploaded revenue is stored unencrypted with no user model, no expiry and no access control — the id is the only thing gating it. Fine for a single-tenant demo, not for real clients.
+- On serverless the store falls back to the system temp directory, which is per-instance and ephemeral: an upload and a later tool call can land on different lambdas and the dataset won't be found. Needs blob storage or a database to be reliable in production. `REVENUE_DATA_DIR` points it at a real disk when one exists.
 
 ## Known limitations
 

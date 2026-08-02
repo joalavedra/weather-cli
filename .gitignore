@@ -10,3 +10,5 @@ dist/
 tsconfig.tsbuildinfo
 .gstack/
 .data/
+.vercel
+.env*
