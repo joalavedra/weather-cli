@@ -98,6 +98,35 @@ Rather than eyeball the correlation, `estimateTriggerCorrelation` decomposes it 
 
 When no single contract scores well, `composeBasket` spreads a budget across proxies that miss in different ways. Combined coverage assumes independent misses and is capped below 100%, so a basket never poses as a perfect hedge.
 
+## Backtesting before you bind
+
+With a fitted curve and both locations' history in hand, the structure can be replayed against the seasons that already happened. Rungs are sized to the loss each one stands in for, so the contract count is solved rather than guessed.
+
+```
+$ weather backtest KXHIGHCHI-26AUG02 --revenue takings.csv \
+    --premises 41.93,-87.64 --months 5,6,7,8,9
+
+Fitted loss:      below 72.5°F, $138/°F (R² 0.91)
+Cover bought:     2 rungs, sized to each rung's own loss
+  70° or below         1765 contracts @ 2¢
+  71° to 72°            404 contracts @ 3¢
+
+Replayed:         612 days
+Weather losses:   $204,480
+Cover paid:       $163,145 (80% of losses)
+Premium spent:    $29,021
+
+Daily swing:      $717 -> $405  (44% smoother)
+Worst day:        -$3,806 -> -$2,089
+Paid when hurt:   103 of 192 days (54%)
+```
+
+The headline is the **swing**, not the profit. A hedge is supposed to cost money on average; what it buys is a flatter year.
+
+That makes the sizing failure mode visible, and it is not the one people expect. Holding a flat count on every rung, the swing reduction runs 4% → 19% → 37% → **−1%** as the count climbs. Too little cover does nothing; too much turns the position into a bet that *adds* volatility. The optimum is interior and asymmetric — here the deep-cold rung wants four times the contracts of the mild one, because the loss conditional on landing there is far larger. Solving it beat every flat count tried by hand.
+
+One caveat: premium is charged at today's ask on every replayed day. Real prices moved with the season, so treat the loss ratio as indicative and the swing reduction — which depends only on realized weather — as the solid number.
+
 ## Cover is a cost
 
 Premium spent in a season where the weather cooperated isn't a loss — it's the price of not carrying the risk. Two rules follow: never size cover above stated exposure (a position bigger than the loss it protects is a bet), and never sell a forecast.
@@ -114,6 +143,7 @@ weather-cli/
 │   ├── observations.ts   # Open-Meteo history + geocoding (free, no key)
 │   ├── loss.ts           # fit a business's loss curve from its own revenue
 │   ├── geobasis.ts       # measured station-vs-premises trigger correlation
+│   ├── backtest.ts       # replay a structure against past seasons; solve sizing
 │   ├── kalshi.ts         # Kalshi adapter (public HTTP, no credentials)
 │   ├── polymarket.ts     # Polymarket adapter (wraps the `polymarket` CLI)
 │   ├── venue.ts          # Venue interface + registry + routing
@@ -153,6 +183,8 @@ weather contracts --location Miami --peril rain      # skip straight to contract
 weather fit --revenue takings.csv --location Chicago       # fit your loss curve
 weather station-basis --station "Chicago Midway" --premises "41.93,-87.64" \
   --threshold 72 --direction below                         # measure the real basis
+weather backtest KXHIGHCHI-26AUG02 --revenue takings.csv \
+  --premises 41.93,-87.64 --months 5,6,7,8,9               # replay past seasons
 
 weather quote KXHIGHCHI-26AUG02-B73.5 --side yes --budget 300 --exposure 10000
 

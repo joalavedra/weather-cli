@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import {
   alignSamples,
+  backtest,
   computeBasisRisk,
   computeHedge,
   dailyHistory,
@@ -12,11 +13,15 @@ import {
   geocode,
   getVenue,
   kalshi,
+  describeBacktest,
   measureGeographicBasis,
   quoteFromMarket,
+  selectLossRungs,
+  sizeLegsFromHistory,
 } from "@weather/core";
 import type {
   BasisAssessment,
+  CoverLeg,
   CoverQuery,
   GeoPoint,
   RevenueDay,
@@ -456,6 +461,133 @@ program
       process.stdout.write(`Loss days:          ${measurement.lossDays}\n`);
       process.stdout.write(`Paid when fine:     ${measurement.falsePositiveDays} days\n\n`);
       process.stdout.write(`${describeGeoBasis(measurement)}\n`);
+    },
+  );
+
+function parseMonths(raw: string | undefined): number[] {
+  if (raw === undefined || raw.trim() === "") return [];
+  return raw.split(",").map((part) => {
+    const month = Number.parseInt(part.trim(), 10);
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      throw new Error(`--months takes calendar numbers 1-12, got "${part.trim()}"`);
+    }
+    return month;
+  });
+}
+
+program
+  .command("backtest <eventTicker>")
+  .description("Replay a ladder's loss-region rungs against the seasons that already happened.")
+  .requiredOption("--revenue <csv>", "path to a date,revenue CSV")
+  .requiredOption("--premises <place>", "where the business is (name or lat,lon)")
+  .option("--contracts <n>", "contracts per rung; omit to size each rung to its own loss")
+  .option("--months <list>", "calendar months the business is exposed, e.g. 5,6,7,8,9")
+  .option("--start <date>", "history start (YYYY-MM-DD)", "2022-01-01")
+  .option("--end <date>", "history end (YYYY-MM-DD)", "2025-12-31")
+  .action(
+    async (
+      eventTicker: string,
+      opts: {
+        revenue: string;
+        premises: string;
+        contracts?: string;
+        months?: string;
+        start: string;
+        end: string;
+      },
+    ) => {
+      const ladder = await kalshi.getLadder(eventTicker);
+      if (!ladder.peril) throw new Error(`${eventTicker} has no classified peril to measure`);
+      if (!ladder.settlement.station) {
+        throw new Error(`${eventTicker} does not name a settlement station in its rules`);
+      }
+      const [station, premises] = await Promise.all([
+        resolvePoint(ladder.settlement.station),
+        resolvePoint(opts.premises),
+      ]);
+
+      // Fit the curve on the client's own history, then replay against both
+      // locations: the premises decide the loss, the station decides the payout.
+      const rows = parseRevenueCsv(await readFile(opts.revenue, "utf8"));
+      const revenueDates = rows.map((r) => r.date).toSorted();
+      const [fitSeries] = await dailyHistory({
+        points: [premises],
+        start: revenueDates[0] ?? opts.start,
+        end: revenueDates.at(-1) ?? opts.end,
+        peril: ladder.peril,
+      });
+      if (!fitSeries) throw new Error("no observations returned for the premises");
+      const curve = fitLossCurve(alignSamples(rows, fitSeries), fitSeries.unit);
+
+      const [stationSeries, premisesSeries] = await dailyHistory({
+        points: [station, premises],
+        start: opts.start,
+        end: opts.end,
+        peril: ladder.peril,
+      });
+      if (!stationSeries || !premisesSeries) {
+        throw new Error("the archive returned no observations for those points");
+      }
+
+      const months = parseMonths(opts.months);
+      const lossRungs = selectLossRungs(ladder, curve);
+      const fixed = opts.contracts === undefined ? null : Number.parseFloat(opts.contracts);
+      const legs: CoverLeg[] =
+        fixed === null
+          ? sizeLegsFromHistory({
+              rungs: lossRungs,
+              curve,
+              station: stationSeries,
+              premises: premisesSeries,
+              ...(months.length > 0 && { months }),
+            })
+          : lossRungs
+              .filter((rung) => rung.strike !== null && rung.quotes.yesAsk > 0)
+              .map((rung) => ({
+                label: rung.strike?.label ?? rung.id,
+                strike: rung.strike as NonNullable<typeof rung.strike>,
+                contracts: fixed,
+                pricePerContract: rung.quotes.yesAsk,
+              }));
+      if (legs.length === 0) {
+        throw new Error(
+          `no rung on ${eventTicker} sits in the loss region (${curve.direction} ${curve.threshold}) with a live ask`,
+        );
+      }
+
+      const result = backtest({
+        legs,
+        curve,
+        station: stationSeries,
+        premises: premisesSeries,
+        ...(months.length > 0 && { months }),
+      });
+      if (isJson()) return emitJson({ curve, legs, result, describe: describeBacktest(result) });
+
+      const unit = curve.unit === "F" ? "°F" : "";
+      process.stdout.write(`Ladder:           ${ladder.title}\n`);
+      process.stdout.write(`Settles at:       ${ladder.settlement.station}\n`);
+      process.stdout.write(`Premises:         ${premises.name ?? opts.premises}\n\n`);
+      process.stdout.write(`Fitted loss:      ${curve.direction} ${curve.threshold}${unit}, $${curve.slopePerUnit.toFixed(0)}/${unit || "unit"} (R² ${curve.rSquared.toFixed(2)})\n`);
+      const sizing = fixed === null ? "sized to each rung's own loss" : `${fixed} contracts per rung`;
+      process.stdout.write(`Cover bought:     ${legs.length} rungs, ${sizing}\n`);
+      for (const leg of legs) {
+        process.stdout.write(
+          `  ${leg.label.padEnd(18)} ${String(leg.contracts).padStart(6)} contracts @ ${(leg.pricePerContract * 100).toFixed(0)}¢\n`,
+        );
+      }
+      process.stdout.write(`\nReplayed:         ${result.days} days\n`);
+      process.stdout.write(`Weather losses:   $${Math.round(result.totalLoss).toLocaleString()}\n`);
+      process.stdout.write(`Cover paid:       $${Math.round(result.totalPayout).toLocaleString()} (${(result.coveredFraction * 100).toFixed(0)}% of losses)\n`);
+      process.stdout.write(`Premium spent:    $${Math.round(result.totalPremium).toLocaleString()}\n`);
+      process.stdout.write(`Loss ratio:       ${result.lossRatio === null ? "n/a" : result.lossRatio.toFixed(2)}\n\n`);
+      process.stdout.write(`Daily swing:      $${Math.round(result.swingUnhedged).toLocaleString()} -> $${Math.round(result.swingHedged).toLocaleString()}  (${(result.swingReduction * 100).toFixed(0)}% smoother)\n`);
+      process.stdout.write(`Worst day:        -$${Math.round(-result.worstDayUnhedged).toLocaleString()} -> -$${Math.round(-result.worstDayHedged).toLocaleString()}\n`);
+      process.stdout.write(`Paid when hurt:   ${result.daysHurtAndPaid} of ${result.daysHurt} days (${(result.realizedTriggerCorrelation * 100).toFixed(0)}%)\n\n`);
+      process.stdout.write(`${describeBacktest(result)}\n`);
+      process.stdout.write(
+        `\nPremium is charged at today's ask on every replayed day; real prices moved with the season.\n`,
+      );
     },
   );
 
