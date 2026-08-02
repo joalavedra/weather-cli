@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "import",
+    "unicorn"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/.next/**",
+    "**/node_modules/**",
+    "**/next-env.d.ts"
+  ],
+  "overrides": [
+    {
+      "files": [
+        "apps/web/app/layout.tsx"
+      ],
+      "rules": {
+        "import/no-unassigned-import": "off"
+      }
+    }
+  ]
+}

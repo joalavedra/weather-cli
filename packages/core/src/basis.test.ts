@@ -5,18 +5,16 @@ import {
   type BasisInputs,
   type BasketLeg,
 } from "./basis.js";
-import type { HedgeQuote } from "./types.js";
+import type { CoverQuote } from "./types.js";
 
-function quote(maxPayoutUsdc: number): HedgeQuote {
+function quote(limitUsdc: number): CoverQuote {
   return {
-    yesPriceUsdc: 0.5,
-    costBudgetUsdc: maxPayoutUsdc / 2,
-    sharesAffordable: maxPayoutUsdc,
-    maxPayoutUsdc,
-    profitIfYesUsdc: maxPayoutUsdc / 2,
-    roiIfYesPct: 100,
-    roiIfNoPct: -100,
-    exposureValueUsdc: null,
+    pricePerContract: 0.5,
+    premiumUsdc: limitUsdc / 2,
+    contracts: limitUsdc,
+    limitUsdc,
+    netIfTriggeredUsdc: limitUsdc / 2,
+    exposureUsdc: null,
     coverageRatio: null,
   };
 }

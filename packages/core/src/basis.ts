@@ -1,4 +1,4 @@
-import type { HedgeQuote } from "./types.js";
+import type { CoverQuote } from "./types.js";
 
 /**
  * What the client is actually trying to protect — their real loss, not the
@@ -16,8 +16,8 @@ export interface LossProfile {
 }
 
 export interface BasisInputs {
-  /** The hedge quote already sized against the candidate market. */
-  quote: HedgeQuote;
+  /** The cover already priced against the candidate contract. */
+  quote: CoverQuote;
   /** The client's real loss profile. */
   loss: LossProfile;
   /** Market resolution date (ISO) from `Market.endDate`; null if open-ended. */
@@ -134,7 +134,7 @@ export function computeBasisRisk(input: BasisInputs): BasisAssessment {
   if (exposure <= 0) {
     throw new Error(`exposureValueUsdc must be positive, got ${exposure}`);
   }
-  const rawCoverage = input.quote.maxPayoutUsdc / exposure;
+  const rawCoverage = input.quote.limitUsdc / exposure;
   const payoutCoverage = clamp01(rawCoverage);
   const tenor = tenorAlignment(input);
   const effectiveness = rho * tenor * payoutCoverage;
@@ -168,8 +168,8 @@ export interface BasketLeg {
 export interface BasketAllocation {
   leg: BasketLeg;
   budgetUsdc: number;
-  sharesAffordable: number;
-  maxPayoutUsdc: number;
+  contracts: number;
+  limitUsdc: number;
 }
 
 export interface BasketPlan {
@@ -235,9 +235,9 @@ export function composeBasket(
     }
     const budget = totalBudgetUsdc * (leg.triggerCorrelation / weightTotal);
     const shares = budget / leg.priceUsdc;
-    return { leg, budgetUsdc: budget, sharesAffordable: shares, maxPayoutUsdc: shares };
+    return { leg, budgetUsdc: budget, contracts: shares, limitUsdc: shares };
   });
-  const totalPayout = allocations.reduce((s, a) => s + a.maxPayoutUsdc, 0);
+  const totalPayout = allocations.reduce((s, a) => s + a.limitUsdc, 0);
   const missProduct = legs.reduce((p, l) => p * (1 - l.triggerCorrelation), 1);
   const combinedCoverage = Math.min(MAX_COMBINED_COVERAGE, 1 - missProduct);
   const coverageRatio =

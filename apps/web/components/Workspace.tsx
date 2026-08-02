@@ -1,19 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import type { BasisAssessment, HedgeQuote } from "@weather/core";
+import type { BasisAssessment, CoverQuote } from "@weather/core";
 import { WalletPanel } from "@/components/WalletPanel";
 
 interface MarketSummary {
   id: string;
-  slug: string;
+  venue?: string;
   question: string;
-  category?: string;
-  city?: string | null;
-  liquidity?: number;
-  outcomes: string[];
-  outcomePrices: number[];
+  peril?: string | null;
+  location?: string | null;
+  bucket?: string | null;
+  prices?: { yesAsk: number; noAsk: number };
+  openInterest?: number;
   endDate?: string | null;
+  settlesAt?: string | null;
+  settlementSource?: string | null;
   url: string;
 }
 
@@ -24,14 +26,14 @@ export type Pin =
       key: string;
       market: MarketSummary;
       side: "Yes" | "No";
-      quote: HedgeQuote;
+      quote: CoverQuote;
     }
   | {
       kind: "basis";
       key: string;
       market: MarketSummary;
       side: "Yes" | "No";
-      quote: HedgeQuote;
+      quote: CoverQuote;
       basis: BasisAssessment;
     }
   | {
@@ -64,9 +66,11 @@ function fmtUsdShort(n: number): string {
 }
 
 function MarketBlock({ market }: { market: MarketSummary }) {
-  const tag = [market.category, market.city].filter(Boolean).join(" / ");
-  const yesPrice = market.outcomePrices[0];
-  const noPrice = market.outcomePrices[1];
+  const tag = [market.peril, market.location].filter(Boolean).join(" / ");
+  const sides: Array<[string, number | undefined]> = [
+    ["Yes", market.prices?.yesAsk],
+    ["No", market.prices?.noAsk],
+  ];
   return (
     <div>
       {tag ? (
@@ -74,12 +78,14 @@ function MarketBlock({ market }: { market: MarketSummary }) {
           {tag}
         </div>
       ) : null}
-      <div className="text-[13px] text-[var(--text)] mb-3 leading-snug">
+      <div className="text-[13px] text-[var(--text)] mb-1 leading-snug">
         {market.question}
       </div>
+      {market.bucket ? (
+        <div className="text-[11px] text-[var(--text-dim)] mb-3">{market.bucket}</div>
+      ) : null}
       <div className="t-odds">
-        {market.outcomes.map((outcome, i) => {
-          const price = market.outcomePrices[i];
+        {sides.map(([outcome, price], i) => {
           if (price === undefined) return null;
           const cls = i === 0 ? "yes" : "no";
           return (
@@ -90,16 +96,22 @@ function MarketBlock({ market }: { market: MarketSummary }) {
           );
         })}
       </div>
+      {market.settlesAt ? (
+        <div className="text-[10px] text-[var(--text-faint)] mt-2 leading-snug">
+          Measured at {market.settlesAt}
+          {market.settlementSource ? ` · ${market.settlementSource}` : ""}
+        </div>
+      ) : null}
       <div className="text-[10px] text-[var(--text-faint)] mt-2 flex justify-between tabular-nums">
         <span>
-          {market.liquidity !== undefined ? `Liq ${fmtUsdShort(market.liquidity)}` : ""}
+          {market.openInterest !== undefined
+            ? `OI ${fmtUsdShort(market.openInterest)}`
+            : ""}
         </span>
         <span>
-          {market.endDate ? `Ends ${market.endDate.slice(0, 10)}` : ""}
+          {market.endDate ? `Closes ${market.endDate.slice(0, 10)}` : ""}
         </span>
       </div>
-      {/* suppress unused */}
-      <span className="hidden">{yesPrice}{noPrice}</span>
     </div>
   );
 }
@@ -109,31 +121,22 @@ function QuoteBlock({
   quote,
 }: {
   side: "Yes" | "No";
-  quote: HedgeQuote;
+  quote: CoverQuote;
 }) {
   const rows: Array<[string, string, string?]> = [
     ["Side", side.toUpperCase()],
-    ["Price", `${(quote.yesPriceUsdc * 100).toFixed(1)}¢`],
-    ["Cost", fmtUsd(quote.costBudgetUsdc)],
-    ["Shares", quote.sharesAffordable.toFixed(2)],
-    ["Max payout", fmtUsd(quote.maxPayoutUsdc)],
-    [
-      "If trigger",
-      `+${fmtUsd(quote.profitIfYesUsdc)} (${quote.roiIfYesPct.toFixed(1)}%)`,
-      "pos",
-    ],
-    [
-      "If no hit",
-      `-${fmtUsd(quote.costBudgetUsdc)} (${quote.roiIfNoPct.toFixed(1)}%)`,
-      "neg",
-    ],
+    ["Price", `${(quote.pricePerContract * 100).toFixed(1)}¢`],
+    ["Premium", fmtUsd(quote.premiumUsdc)],
+    ["Contracts", quote.contracts.toFixed(2)],
+    ["Cover limit", fmtUsd(quote.limitUsdc)],
+    ["If triggered", `+${fmtUsd(quote.netIfTriggeredUsdc)} after premium`, "pos"],
   ];
-  if (quote.exposureValueUsdc !== null && quote.coverageRatio !== null) {
+  if (quote.exposureUsdc !== null && quote.coverageRatio !== null) {
     rows.push(
-      ["Exposure", fmtUsd(quote.exposureValueUsdc)],
+      ["Exposure", fmtUsd(quote.exposureUsdc)],
       [
         "Coverage",
-        `${(quote.coverageRatio * 100).toFixed(1)}% / ${fmtUsdShort(quote.exposureValueUsdc)}`,
+        `${(quote.coverageRatio * 100).toFixed(1)}% / ${fmtUsdShort(quote.exposureUsdc)}`,
         "amber",
       ],
     );
@@ -296,7 +299,7 @@ function HistoryRow({ pin }: { pin: Pin }) {
       <li className="text-[10.5px] text-[var(--text-dim)] truncate flex items-center gap-2">
         <span className="text-[var(--text-faint)]">›</span>
         <span className="text-[var(--amber)] tabular-nums">
-          {pin.side.toUpperCase()} {fmtUsdShort(pin.quote.costBudgetUsdc)}
+          {pin.side.toUpperCase()} {fmtUsdShort(pin.quote.premiumUsdc)}
         </span>
         <span className="truncate">{pin.market.question}</span>
       </li>
