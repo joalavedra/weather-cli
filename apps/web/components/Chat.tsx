@@ -12,14 +12,16 @@ import type { Pin } from "@/components/Workspace";
 
 interface MarketSummary {
   id: string;
-  slug: string;
+  venue?: string;
   question: string;
-  category?: string;
-  city?: string | null;
-  liquidity?: number;
-  outcomes: string[];
-  outcomePrices: number[];
+  peril?: string | null;
+  location?: string | null;
+  bucket?: string | null;
+  prices?: { yesAsk: number; noAsk: number };
+  openInterest?: number;
   endDate?: string | null;
+  settlesAt?: string | null;
+  settlementSource?: string | null;
   url: string;
 }
 
@@ -73,15 +75,20 @@ function deriveState(messages: UIMessage[]): {
     for (const part of m.parts) {
       partIdx += 1;
       if (
-        part.type === "tool-search_weather_markets" ||
-        part.type === "tool-search_markets" ||
+        part.type === "tool-find_contracts" ||
+        part.type === "tool-get_ladder" ||
         part.type === "tool-get_market"
       ) {
         if (part.state !== "output-available") continue;
         const out = part.output as
-          | { markets?: MarketSummary[]; market?: MarketSummary }
+          | {
+              markets?: MarketSummary[];
+              market?: MarketSummary;
+              ladder?: { rungs?: MarketSummary[] };
+            }
           | undefined;
-        const markets = out?.markets ?? (out?.market ? [out.market] : []);
+        const markets =
+          out?.markets ?? out?.ladder?.rungs ?? (out?.market ? [out.market] : []);
         for (const market of markets) {
           pins.push({
             kind: "market",
@@ -94,7 +101,7 @@ function deriveState(messages: UIMessage[]): {
             m.id,
             markets.length === 1
               ? `pinned: ${markets[0]?.question ?? ""}`
-              : `pinned ${markets.length} markets`,
+              : `pinned ${markets.length} contracts`,
           );
         }
       } else if (part.type === "tool-compute_hedge_quote") {
@@ -145,9 +152,13 @@ function deriveState(messages: UIMessage[]): {
       } else if (part.type === "tool-what_if") {
         if (part.state !== "output-available") continue;
         addHint(m.id, "what-if computed");
-      } else if (part.type === "tool-list_cities") {
+      } else if (part.type === "tool-find_cover") {
         if (part.state !== "output-available") continue;
-        addHint(m.id, "checked city inventory");
+        const out = part.output as { series?: unknown[] };
+        addHint(m.id, `found ${out.series?.length ?? 0} cover series`);
+      } else if (part.type === "tool-list_events") {
+        if (part.state !== "output-available") continue;
+        addHint(m.id, "listed open dates");
       } else if (part.type === "tool-wallet_status") {
         if (part.state !== "output-available") continue;
         addHint(m.id, "checked wallet");

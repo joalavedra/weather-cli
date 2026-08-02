@@ -1,6 +1,7 @@
 import { execa } from "execa";
 import { z } from "zod";
 import type { Market } from "./types.js";
+import { locationFromTitle, perilFromText } from "./weather.js";
 
 const RawMarket = z
   .object({
@@ -45,6 +46,15 @@ function toNumber(input: string | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Map a raw Polymarket market onto the venue-neutral shape.
+ *
+ * Polymarket publishes no strike bounds or settlement source, so `strike` is
+ * null and `settlement` is empty rather than fabricated — an unknown
+ * observation point has to read as unknown, since basis-risk scoring depends on
+ * it. Its `outcomePrices` are last-trade prices rather than a live ask, so the
+ * bid/ask fields mirror them instead of implying a book the CLI doesn't return.
+ */
 function transform(raw: RawMarketT): Market {
   const outcomes = parseJsonArray(raw.outcomes).filter(
     (x): x is string => typeof x === "string",
@@ -52,7 +62,9 @@ function transform(raw: RawMarketT): Market {
   const prices = parseJsonArray(raw.outcomePrices)
     .filter((x): x is string => typeof x === "string")
     .map(toNumber);
+  const [yes = 0, no = 0] = prices;
   return {
+    venue: "polymarket",
     id: raw.id,
     slug: raw.slug,
     question: raw.question,
@@ -61,18 +73,27 @@ function transform(raw: RawMarketT): Market {
     startDate: raw.startDate ?? null,
     liquidity: toNumber(raw.liquidity),
     volume: toNumber(raw.volume),
+    volume24h: 0,
+    openInterest: 0,
     active: raw.active ?? false,
     closed: raw.closed ?? false,
     outcomes,
     outcomePrices: prices,
-    conditionId: raw.conditionId ?? null,
-    clobTokenIds: parseJsonArray(raw.clobTokenIds).filter(
-      (x): x is string => typeof x === "string",
-    ),
+    quotes: { yesBid: yes, yesAsk: yes, noBid: no, noAsk: no },
+    peril: perilFromText(raw.question),
+    location: locationFromTitle(raw.question),
+    strike: null,
+    settlement: { sources: [], station: null, rules: raw.description ?? null },
     acceptingOrders: raw.acceptingOrders ?? false,
     orderMinSize: toNumber(raw.orderMinSize),
-    negRisk: raw.negRisk ?? false,
-    image: raw.image ?? null,
+    execution: {
+      venue: "polymarket",
+      clobTokenIds: parseJsonArray(raw.clobTokenIds).filter(
+        (x): x is string => typeof x === "string",
+      ),
+      conditionId: raw.conditionId ?? null,
+      negRisk: raw.negRisk ?? false,
+    },
     url: `https://polymarket.com/event/${raw.slug}`,
   };
 }
@@ -109,11 +130,3 @@ export async function getMarket(idOrSlug: string): Promise<Market> {
   return transform(RawMarket.parse(data));
 }
 
-export async function listMarkets(
-  options: { limit?: number; activeOnly?: boolean } = {},
-): Promise<Market[]> {
-  const args = ["markets", "list", "--limit", String(options.limit ?? 20)];
-  if (options.activeOnly) args.push("--active", "true", "--closed", "false");
-  const data = await runPolymarket(args);
-  return RawMarket.array().parse(data).map(transform);
-}

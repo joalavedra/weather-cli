@@ -6,14 +6,16 @@ import { WalletPanel } from "@/components/WalletPanel";
 
 interface MarketSummary {
   id: string;
-  slug: string;
+  venue?: string;
   question: string;
-  category?: string;
-  city?: string | null;
-  liquidity?: number;
-  outcomes: string[];
-  outcomePrices: number[];
+  peril?: string | null;
+  location?: string | null;
+  bucket?: string | null;
+  prices?: { yesAsk: number; noAsk: number };
+  openInterest?: number;
   endDate?: string | null;
+  settlesAt?: string | null;
+  settlementSource?: string | null;
   url: string;
 }
 
@@ -64,9 +66,11 @@ function fmtUsdShort(n: number): string {
 }
 
 function MarketBlock({ market }: { market: MarketSummary }) {
-  const tag = [market.category, market.city].filter(Boolean).join(" / ");
-  const yesPrice = market.outcomePrices[0];
-  const noPrice = market.outcomePrices[1];
+  const tag = [market.peril, market.location].filter(Boolean).join(" / ");
+  const sides: Array<[string, number | undefined]> = [
+    ["Yes", market.prices?.yesAsk],
+    ["No", market.prices?.noAsk],
+  ];
   return (
     <div>
       {tag ? (
@@ -74,12 +78,14 @@ function MarketBlock({ market }: { market: MarketSummary }) {
           {tag}
         </div>
       ) : null}
-      <div className="text-[13px] text-[var(--text)] mb-3 leading-snug">
+      <div className="text-[13px] text-[var(--text)] mb-1 leading-snug">
         {market.question}
       </div>
+      {market.bucket ? (
+        <div className="text-[11px] text-[var(--text-dim)] mb-3">{market.bucket}</div>
+      ) : null}
       <div className="t-odds">
-        {market.outcomes.map((outcome, i) => {
-          const price = market.outcomePrices[i];
+        {sides.map(([outcome, price], i) => {
           if (price === undefined) return null;
           const cls = i === 0 ? "yes" : "no";
           return (
@@ -90,16 +96,22 @@ function MarketBlock({ market }: { market: MarketSummary }) {
           );
         })}
       </div>
+      {market.settlesAt ? (
+        <div className="text-[10px] text-[var(--text-faint)] mt-2 leading-snug">
+          Measured at {market.settlesAt}
+          {market.settlementSource ? ` · ${market.settlementSource}` : ""}
+        </div>
+      ) : null}
       <div className="text-[10px] text-[var(--text-faint)] mt-2 flex justify-between tabular-nums">
         <span>
-          {market.liquidity !== undefined ? `Liq ${fmtUsdShort(market.liquidity)}` : ""}
+          {market.openInterest !== undefined
+            ? `OI ${fmtUsdShort(market.openInterest)}`
+            : ""}
         </span>
         <span>
-          {market.endDate ? `Ends ${market.endDate.slice(0, 10)}` : ""}
+          {market.endDate ? `Closes ${market.endDate.slice(0, 10)}` : ""}
         </span>
       </div>
-      {/* suppress unused */}
-      <span className="hidden">{yesPrice}{noPrice}</span>
     </div>
   );
 }

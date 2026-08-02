@@ -7,9 +7,12 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js",
+    "./kalshi": "./dist/kalshi.js",
     "./polymarket": "./dist/polymarket.js",
+    "./venue": "./dist/venue.js",
     "./weather": "./dist/weather.js",
     "./hedge": "./dist/hedge.js",
+    "./basis": "./dist/basis.js",
     "./types": "./dist/types.js"
   },
   "scripts": {

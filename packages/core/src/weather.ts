@@ -1,124 +1,91 @@
-import { searchMarkets } from "./polymarket.js";
-import type {
-  ClassifiedMarket,
-  Market,
-  WeatherCategory,
-} from "./types.js";
+/**
+ * Weather taxonomy shared by every venue adapter.
+ *
+ * Venues describe the same physical risk in their own vocabulary — Kalshi
+ * publishes a typed series catalogue, Polymarket publishes free text. Both are
+ * reduced to the same peril and location here so that basis-risk scoring
+ * compares like with like regardless of where the contract trades.
+ */
+import type { Peril, StrikeType, StrikeUnit } from "./types.js";
 
-const WEATHER_KEYWORDS = [
-  "weather",
-  "hurricane",
-  "tornado",
-  "storm",
-  "temperature",
-  "snowfall",
-  "rainfall",
-  "climate",
-  "heatwave",
-  "frost",
-] as const;
-
-const KNOWN_CITIES = [
-  "New York City",
-  "NYC",
-  "Tokyo",
-  "Madrid",
-  "Beijing",
-  "Shanghai",
-  "Singapore",
-  "Jakarta",
-  "Chongqing",
-  "Chengdu",
-  "Wuhan",
-  "Bangkok",
-  "London",
-  "Paris",
-  "Sao Paulo",
-  "Mexico City",
-  "Mumbai",
-  "Delhi",
-  "Hong Kong",
-  "Seoul",
+const PERIL_RULES: ReadonlyArray<readonly [RegExp, Peril]> = [
+  [/hurricane|\bhur\b|tropical storm|named storm/i, "hurricane"],
+  [/tornado/i, "tornado"],
+  [/snow/i, "snow"],
+  [/rain|precipitation/i, "rain"],
+  [/wind/i, "wind"],
+  [/highest temp|high temp|maximum temp|max temp|hottest|heatwave/i, "high_temp"],
+  [/lowest temp|low temp|minimum temp|min temp|coldest|frost|freeze/i, "low_temp"],
 ];
 
-function categorize(question: string): WeatherCategory {
-  const q = question.toLowerCase();
-  if (q.includes("space weather") || q.includes("geomagnetic")) {
-    return "space_weather";
+/**
+ * Classify text describing a contract into the physical driver it settles on.
+ *
+ * Order matters: snow and rain are matched before temperature so a "Snowfall"
+ * series doesn't fall through to a temperature rule on a shared word.
+ */
+export function perilFromText(text: string): Peril {
+  for (const [pattern, peril] of PERIL_RULES) {
+    if (pattern.test(text)) return peril;
   }
-  if (q.includes("hurricane")) return "hurricane";
-  if (q.includes("tornado")) return "tornado";
-  if (q.includes("named storm") || q.includes("tropical storm")) return "storm";
-  if (q.includes("temperature") || /\b\d+\s?°?[CF]\b/.test(question)) {
-    return "temperature";
-  }
-  if (q.includes("climate")) return "climate";
   return "other";
 }
 
-function extractCity(question: string): string | null {
-  for (const city of KNOWN_CITIES) {
-    if (question.toLowerCase().includes(city.toLowerCase())) return city;
-  }
+const LOCATION_NOISE =
+  /\b(highest|lowest|high|low|maximum|minimum|max|min|temp|temperature|temperatures|daily|hourly|monthly|weekly|annual|directional|rain|rainfall|snow|snowfall|precipitation|wind|hurricane|tornado|natural|disaster|emergency|hits|in|on|the|of|at|for|markets?|total|number|level|instance|will|be)\b/gi;
+
+/**
+ * Derive the settled location from a contract title by subtracting peril and
+ * cadence vocabulary.
+ *
+ * Venue titles are inconsistent ("Highest temperature in Houston", "Seattle
+ * Maximum Temperature Daily", "Rain Miami"). A hardcoded city dictionary would
+ * silently drop every city a venue adds later, so whatever survives the
+ * subtraction is treated as the place.
+ */
+export function locationFromTitle(title: string): string | null {
+  const stripped = title
+    .replace(LOCATION_NOISE, " ")
+    .replace(/[^\p{L}\p{N}\s'’.-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return stripped === "" ? null : stripped;
+}
+
+const STATION_PATTERN =
+  /\b(?:recorded|measured|reported|observed|precipitation|snowfall|temperature)\s+(?:in|at)\s+(.+?)(?:\s+(?:for|on|in|between|during)\b|,?\s+as reported|$)/i;
+
+/**
+ * Pull the observation station out of a contract's primary rule text.
+ *
+ * Venues phrase this several ways — "the highest temperature recorded in
+ * Central Park, New York for August 02" and "the total precipitation at CLIMIA
+ * in Miami in Aug 2026" — so the anchor is the measurement verb or quantity
+ * rather than any single wording.
+ *
+ * The station is the hedge's actual observation point, and the distance between
+ * it and the client's premises is the geographic half of basis risk.
+ */
+export function stationFromRules(rules: string | null | undefined): string | null {
+  if (!rules) return null;
+  const station = STATION_PATTERN.exec(rules)?.[1]?.trim();
+  return station === undefined || station === "" ? null : station;
+}
+
+/** Infer the measurement unit a strike is denominated in from its label. */
+export function unitFromLabel(label: string): StrikeUnit {
+  if (/°/.test(label)) return "F";
+  if (/\b(?:in|inch|inches)\b|"/.test(label)) return "in";
+  if (/\d/.test(label)) return "count";
   return null;
 }
 
-function isWeatherRelevant(market: Market): boolean {
-  const q = market.question.toLowerCase();
-  if (q.includes("rainbow six")) return false;
-  return WEATHER_KEYWORDS.some((kw) => q.includes(kw)) || /\b\d+\s?°[CF]\b/.test(market.question);
+export function normalizeStrikeType(raw: string | null | undefined): StrikeType {
+  if (raw === "less" || raw === "greater" || raw === "between") return raw;
+  return "unknown";
 }
 
-export function classify(market: Market): ClassifiedMarket {
-  return {
-    ...market,
-    category: categorize(market.question),
-    city: extractCity(market.question),
-  };
-}
-
-export async function fetchWeatherMarkets(
-  options: { limitPerKeyword?: number } = {},
-): Promise<ClassifiedMarket[]> {
-  const limit = options.limitPerKeyword ?? 30;
-  const seen = new Set<string>();
-  const results: ClassifiedMarket[] = [];
-  const lists = await Promise.all(
-    WEATHER_KEYWORDS.map((kw) => searchMarkets(kw, limit).catch(() => [])),
-  );
-  for (const list of lists) {
-    for (const market of list) {
-      if (seen.has(market.id)) continue;
-      if (market.closed) continue;
-      if (!isWeatherRelevant(market)) continue;
-      seen.add(market.id);
-      results.push(classify(market));
-    }
-  }
-  results.sort((a, b) => b.liquidity - a.liquidity);
-  return results;
-}
-
-export async function fetchCityMarkets(
-  city: string,
-): Promise<ClassifiedMarket[]> {
-  const all = await fetchWeatherMarkets();
-  const target = city.toLowerCase();
-  return all.filter((m) => m.city?.toLowerCase() === target);
-}
-
-export function listAvailableCities(
-  markets: ClassifiedMarket[],
-): Array<{ city: string; count: number; totalLiquidity: number }> {
-  const byCity = new Map<string, { count: number; totalLiquidity: number }>();
-  for (const m of markets) {
-    if (!m.city) continue;
-    const entry = byCity.get(m.city) ?? { count: 0, totalLiquidity: 0 };
-    entry.count += 1;
-    entry.totalLiquidity += m.liquidity;
-    byCity.set(m.city, entry);
-  }
-  return Array.from(byCity.entries())
-    .map(([city, v]) => ({ city, ...v }))
-    .sort((a, b) => b.totalLiquidity - a.totalLiquidity);
+/** Units that take only whole values, where an exclusive bound has a next value. */
+export function isIntegralUnit(unit: StrikeUnit): boolean {
+  return unit === "F" || unit === "count";
 }
