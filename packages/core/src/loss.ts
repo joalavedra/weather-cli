@@ -206,6 +206,37 @@ export function describeFit(curve: LossCurve): string {
 }
 
 /**
+ * Parse a `date,revenue` CSV export.
+ *
+ * Deliberately forgiving about shape and strict about content. Every POS export
+ * — Square, Toast, Shopify, Stripe — can produce a date and a number per row,
+ * but they disagree on headers, quoting, currency symbols and thousands
+ * separators. Rows that don't yield both a date and a finite number are skipped
+ * rather than guessed at, since a fabricated day flows straight into the
+ * threshold estimate.
+ */
+export function parseRevenueCsv(text: string): RevenueDay[] {
+  const rows: RevenueDay[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const cells = line.split(",");
+    const date = cells[0]?.trim().replaceAll('"', "");
+    if (date === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    // Rejoin the remainder before stripping separators, so "$1,234.56" split
+    // across cells by the comma still reads as one number.
+    const rest = cells.slice(1).join("").replace(/["$\s]/g, "");
+    const revenue = Number.parseFloat(rest);
+    if (!Number.isFinite(revenue)) continue;
+    rows.push({ date, revenue });
+  }
+  if (rows.length === 0) {
+    throw new Error(
+      "no usable rows found — expected lines of the form 2026-07-01,4820.50 (a header row is fine)",
+    );
+  }
+  return rows;
+}
+
+/**
  * Pair daily revenue with the observation for the same date. Days missing from
  * either side are dropped rather than interpolated: a fabricated observation
  * would flow straight into the threshold estimate.

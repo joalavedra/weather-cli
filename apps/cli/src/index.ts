@@ -15,6 +15,7 @@ import {
   kalshi,
   describeBacktest,
   measureGeographicBasis,
+  parseRevenueCsv,
   quoteFromMarket,
   coverProfile,
   selectLossRungs,
@@ -26,7 +27,6 @@ import type {
   CoverLeg,
   CoverQuery,
   GeoPoint,
-  RevenueDay,
   CoverQuote,
   Ladder,
   Market,
@@ -335,27 +335,6 @@ program
       printBasis(basis);
     },
   );
-
-/**
- * Parse a `date,revenue` CSV export. Deliberately minimal: this is the shape
- * every POS export (Square, Toast, Shopify, Stripe) can produce, and asking for
- * anything richer puts a data-cleaning chore between an owner and an answer.
- */
-function parseRevenueCsv(text: string): RevenueDay[] {
-  const rows: RevenueDay[] = [];
-  for (const line of text.split("\n")) {
-    const [rawDate, rawRevenue] = line.split(",", 2);
-    const date = rawDate?.trim();
-    const revenue = Number.parseFloat(rawRevenue ?? "");
-    if (date === undefined || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    if (!Number.isFinite(revenue)) continue;
-    rows.push({ date, revenue });
-  }
-  if (rows.length === 0) {
-    throw new Error("no usable rows found — expected lines of the form 2026-07-01,4820.50");
-  }
-  return rows;
-}
 
 async function resolvePoint(place: string): Promise<GeoPoint> {
   const coords = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(place.trim());

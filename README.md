@@ -4,7 +4,7 @@ Businesses lose money when the weather turns. An ice cream shop takes ~20% less 
 
 This is a broker for that. Describe the weather that costs you money, and it finds the contracts that pay when it happens, sizes them against your actual exposure, and tells you honestly how much of your real loss the cover neutralizes.
 
-It is agent-native by design: everything the chat UI can do is a tool call over one shared domain core, so an agent can reach the same outcomes a person can.
+It is agent-native by design: everything the chat UI can do is a tool call over one shared domain core, so an agent can reach the same outcomes a person can. Both surfaces — chat and CLI — run the same analysis, because a client can upload a year of daily takings to either.
 
 ## Venues
 
@@ -179,6 +179,7 @@ weather-cli/
 │   ├── geobasis.ts       # measured station-vs-premises trigger correlation
 │   ├── backtest.ts       # replay a structure against past seasons; solve sizing
 │   ├── cover.ts          # solve cover from a loss curve, priced as a premium
+│   ├── loss.ts           # (also) parse date,revenue CSV exports
 │   ├── hedge.ts          # price one contract as insurance; exposure invariant
 │   ├── kalshi.ts         # Kalshi adapter (public HTTP, no credentials)
 │   ├── polymarket.ts     # Polymarket adapter (wraps the `polymarket` CLI)
@@ -190,7 +191,9 @@ weather-cli/
 └── apps/web/             # @weather/web — Next.js 16 chat broker
 ```
 
-Tools exposed to the model: `find_cover`, `list_events`, `get_ladder`, `find_contracts`, `get_market`, `compute_hedge_quote`, `estimate_correlation`, `measure_geographic_basis`, `assess_basis_risk`, `compose_basket`, `what_if`, `wallet_status`, `setup_wallet`, `run_approvals`, `place_order`, `get_positions`, `suggest_replies`.
+Revenue lands via `POST /api/revenue` and is stored as JSON under `.data/revenue/`, keyed by a hash of the file so re-uploading is idempotent. The id goes into the conversation; the rows never do — tools read them server-side, so a business's takings don't pass through a model's context to reach the function that needs them.
+
+Tools exposed to the model: `fit_loss_curve`, `solve_cover`, `find_cover`, `list_events`, `get_ladder`, `find_contracts`, `get_market`, `compute_hedge_quote`, `estimate_correlation`, `measure_geographic_basis`, `assess_basis_risk`, `compose_basket`, `what_if`, `wallet_status`, `setup_wallet`, `run_approvals`, `place_order`, `get_positions`, `suggest_replies`.
 
 ## Running it
 
@@ -204,7 +207,7 @@ pnpm web    # chat broker at http://localhost:3000
 pnpm check  # lint + typecheck + tests
 ```
 
-`apps/web/.env.local` needs `DEEPSEEK_API_KEY` (the chat route uses `@ai-sdk/deepseek`).
+`apps/web/.env.local` needs `DEEPSEEK_API_KEY` (the chat route uses `@ai-sdk/deepseek`). The app serves under `/weather`, so local dev is at `http://localhost:3000/weather`. Uploaded revenue is written to `.data/revenue/` (gitignored); set `REVENUE_DATA_DIR` to move it.
 
 ### CLI
 

@@ -1,12 +1,17 @@
 import { tool } from "ai";
 import { z } from "zod";
 import {
+  alignSamples,
   composeBasket,
   computeBasisRisk,
   priceCover,
   dailyHistory,
+  coverProfile,
+  describeFit,
   describeGeoBasis,
   estimateTriggerCorrelation,
+  fitLossCurve,
+  solveCover,
   createWallet,
   geocode,
   getPositions,
@@ -19,6 +24,7 @@ import {
   runApprovals,
 } from "@weather/core";
 import type { BasketLeg, GeoPoint, Market, Peril } from "@weather/core";
+import { loadDataset } from "@/lib/datasets";
 
 const MAX_RESULTS = 8;
 
@@ -234,6 +240,131 @@ export const estimateCorrelationTool = tool({
   execute: ({ geographic, peril, threshold }) => {
     return {
       estimate: estimateTriggerCorrelation({ geographic, peril, threshold }),
+    };
+  },
+});
+
+export const fitLossCurveTool = tool({
+  description:
+    "Fit the client's loss curve from daily revenue they have uploaded. Pairs each day's takings against the weather at their location and recovers where the loss starts and what a degree costs them. Use this the moment a dataset id is available — a measured curve replaces every guess downstream, and the `explainedPct` it returns is the single most important number in the conversation: if weather explains little of their revenue, say so and don't sell cover.",
+  inputSchema: z.object({
+    datasetId: z.string().describe("The revenue dataset id from the client's upload."),
+    location: z.string().describe("Where the business is — a place name or 'lat,lon'."),
+    peril: perilSchema.describe("The physical driver to test against."),
+    direction: z
+      .enum(["below", "above"])
+      .optional()
+      .describe("Force a direction. Omit to let the fit decide which side hurts."),
+  }),
+  execute: async ({ datasetId, location, peril, direction }) => {
+    const dataset = await loadDataset(datasetId);
+    const point = await resolvePoint(location);
+    const [series] = await dailyHistory({
+      points: [point],
+      start: dataset.start,
+      end: dataset.end,
+      peril,
+    });
+    if (!series) throw new Error("the weather archive returned nothing for that location");
+    const curve = fitLossCurve(
+      alignSamples(dataset.rows, series),
+      series.unit,
+      direction,
+    );
+    return {
+      location: point,
+      curve: {
+        direction: curve.direction,
+        threshold: curve.threshold,
+        costPerUnit: Math.round(curve.slopePerUnit),
+        baselineRevenue: Math.round(curve.baseline),
+        explainedPct: Math.round(curve.rSquared * 100),
+        pairedDays: curve.observations,
+        unit: curve.unit,
+      },
+      summary: describeFit(curve),
+    };
+  },
+});
+
+export const solveCoverTool = tool({
+  description:
+    "Solve the cover a client's fitted loss curve implies against a live ladder, and prove it on history they weren't sized on. Sizing is an output here, not an input: each rung is sized to the loss expected on the days it pays, and the premium falls out. Prefer this over compute_hedge_quote whenever a revenue dataset exists — quoting a budget the client names is the weaker path. Returns a profile of loss, payout and net across outcomes; a good structure flattens the net column. Read the warnings out loud.",
+  inputSchema: z.object({
+    datasetId: z.string().describe("The revenue dataset id from the client's upload."),
+    eventTicker: z.string().describe("Ladder to build the cover from, e.g. 'KXHIGHCHI-26AUG02'."),
+    premises: z.string().describe("Where the business is — a place name or 'lat,lon'."),
+    months: z
+      .array(z.number().int().min(1).max(12))
+      .optional()
+      .describe("Calendar months the business is exposed, e.g. [5,6,7,8,9]. Omit for year-round."),
+  }),
+  execute: async ({ datasetId, eventTicker, premises, months }) => {
+    const dataset = await loadDataset(datasetId);
+    const ladder = await kalshi.getLadder(eventTicker);
+    if (!ladder.peril) throw new Error(`${eventTicker} has no classified peril to measure against`);
+    if (!ladder.settlement.station) {
+      throw new Error(`${eventTicker} does not name a settlement station in its rules`);
+    }
+    const [station, premisesPoint] = await Promise.all([
+      resolvePoint(ladder.settlement.station),
+      resolvePoint(premises),
+    ]);
+    const [fitSeries] = await dailyHistory({
+      points: [premisesPoint],
+      start: dataset.start,
+      end: dataset.end,
+      peril: ladder.peril,
+    });
+    if (!fitSeries) throw new Error("the weather archive returned nothing for the premises");
+    const curve = fitLossCurve(alignSamples(dataset.rows, fitSeries), fitSeries.unit);
+
+    const [stationSeries, premisesSeries] = await dailyHistory({
+      points: [station, premisesPoint],
+      start: BASIS_HISTORY_START,
+      end: BASIS_HISTORY_END,
+      peril: ladder.peril,
+    });
+    if (!stationSeries || !premisesSeries) {
+      throw new Error("the weather archive returned nothing for those locations");
+    }
+    const plan = solveCover({
+      ladder,
+      curve,
+      station: stationSeries,
+      premises: premisesSeries,
+      ...(months && months.length > 0 && { months }),
+    });
+    const probes = plan.legs
+      .map((l) => l.strike.floor ?? (l.strike.cap ?? 0) - 2)
+      .concat([plan.attachment + 5])
+      .toSorted((a, b) => a - b);
+    return {
+      settlesAt: ladder.settlement.station,
+      attachesAt: `${plan.direction} ${plan.attachment}${plan.unit === "F" ? "°F" : ""}`,
+      premiumPerDayUsdc: Number(plan.premiumPerDayUsdc.toFixed(2)),
+      limitUsdc: Math.round(plan.limitUsdc),
+      worstDayLossUsdc: Math.round(plan.worstDayLossUsdc),
+      worstDayCoveredPct: Math.round(plan.worstDayCovered * 100),
+      legs: plan.legs.map((l) => ({
+        bucket: l.label,
+        contracts: l.contracts,
+        pricePerContract: l.pricePerContract,
+      })),
+      profile: coverProfile(plan, curve, probes).map((row) => ({
+        value: row.value,
+        lossUsdc: Math.round(row.lossUsdc),
+        payoutUsdc: Math.round(row.payoutUsdc),
+        netUsdc: Math.round(row.netUsdc),
+      })),
+      replay: {
+        days: plan.replay.days,
+        outOfSample: plan.outOfSample,
+        swingReductionPct: Math.round(plan.replay.swingReduction * 100),
+        daysHurt: plan.replay.daysHurt,
+        daysHurtAndPaid: plan.replay.daysHurtAndPaid,
+      },
+      warnings: plan.warnings,
     };
   },
 });
@@ -525,6 +656,8 @@ export const suggestRepliesTool = tool({
 });
 
 export const brokerTools = {
+  fit_loss_curve: fitLossCurveTool,
+  solve_cover: solveCoverTool,
   find_cover: findCoverTool,
   list_events: listEventsTool,
   get_ladder: getLadderTool,

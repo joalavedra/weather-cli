@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { alignSamples, describeFit, expectedLoss, fitLossCurve } from "./loss.js";
+import {
+  alignSamples,
+  describeFit,
+  expectedLoss,
+  fitLossCurve,
+  parseRevenueCsv,
+} from "./loss.js";
 import type { LossSample } from "./loss.js";
 import type { DailySeries } from "./observations.js";
 
@@ -118,6 +124,47 @@ describe("describeFit", () => {
       "F",
     );
     expect(describeFit(helpful)).toMatch(/doesn't hurt this business/);
+  });
+});
+
+describe("parseRevenueCsv", () => {
+  it("reads a plain date,revenue export and skips the header", () => {
+    expect(parseRevenueCsv("date,revenue\n2026-07-01,4820.50\n2026-07-02,3100")).toEqual([
+      { date: "2026-07-01", revenue: 4820.5 },
+      { date: "2026-07-02", revenue: 3100 },
+    ]);
+  });
+
+  it("survives currency symbols, quotes and thousands separators", () => {
+    expect(parseRevenueCsv('2026-07-01,"$1,234.56"')).toEqual([
+      { date: "2026-07-01", revenue: 1234.56 },
+    ]);
+  });
+
+  it("handles CRLF line endings from spreadsheet exports", () => {
+    expect(parseRevenueCsv("2026-07-01,100\r\n2026-07-02,200")).toHaveLength(2);
+  });
+
+  it("ignores extra trailing columns", () => {
+    expect(parseRevenueCsv("2026-07-01,4820.50,covers,notes")).toEqual([
+      { date: "2026-07-01", revenue: 4820.5 },
+    ]);
+  });
+
+  it("skips rows whose revenue isn't a number rather than reading them as zero", () => {
+    expect(parseRevenueCsv("2026-07-01,closed\n2026-07-02,200")).toEqual([
+      { date: "2026-07-02", revenue: 200 },
+    ]);
+  });
+
+  it("skips rows with a date it can't trust", () => {
+    expect(parseRevenueCsv("07/01/2026,100\n2026-07-02,200")).toEqual([
+      { date: "2026-07-02", revenue: 200 },
+    ]);
+  });
+
+  it("says what it expected when nothing parses", () => {
+    expect(() => parseRevenueCsv("total sales for July: 40000")).toThrow(/no usable rows found/);
   });
 });
 

@@ -321,11 +321,88 @@ function ThemeToggle() {
   );
 }
 
+interface DatasetSummary {
+  id: string;
+  days: number;
+  start: string;
+  end: string;
+  meanDailyRevenue: number;
+}
+
+/**
+ * Upload daily takings so the broker can fit a loss curve.
+ *
+ * The dataset id goes into the conversation but the rows never do — the tools
+ * read them server-side. A business's revenue history is not something to pass
+ * through a model's context to reach the function that needs it.
+ */
+function RevenueUpload({
+  onLoaded,
+  disabled,
+}: {
+  onLoaded: (dataset: DatasetSummary) => void;
+  disabled: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload(file: File) {
+    setBusy(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const response = await fetch("/api/revenue", { method: "POST", body });
+      const payload = (await response.json()) as
+        | { dataset: DatasetSummary }
+        | { error: string };
+      if ("error" in payload) {
+        setError(payload.error);
+        return;
+      }
+      onLoaded(payload.dataset);
+    } catch {
+      setError("upload failed — is the server running?");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <label className="t-upload-btn" aria-disabled={disabled || busy}>
+        <input
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          disabled={disabled || busy}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void upload(file);
+            e.target.value = "";
+          }}
+        />
+        {busy ? "reading…" : "+ revenue CSV"}
+      </label>
+      {error ? <span className="text-[10px] text-[var(--neg)]">{error}</span> : null}
+    </div>
+  );
+}
+
 export function Chat() {
   const [input, setInput] = useState("");
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
+
+  function onRevenueLoaded(dataset: DatasetSummary) {
+    void sendMessage({
+      text:
+        `I've uploaded my daily revenue: dataset ${dataset.id}, ` +
+        `${dataset.days} days from ${dataset.start} to ${dataset.end}, ` +
+        `averaging $${Math.round(dataset.meanDailyRevenue)}/day.`,
+    });
+  }
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -350,9 +427,9 @@ export function Chat() {
           <div className="flex items-center gap-3">
             <div className="t-glyph">▮</div>
             <div>
-              <h1 className="t-h1">HEDGE BROKER</h1>
+              <h1 className="t-h1">WEATHER COVER</h1>
               <p className="text-[11px] text-[var(--text-dim)] mt-0.5">
-                Polymarket event-risk insurance
+                Parametric weather insurance for small businesses
               </p>
             </div>
           </div>
@@ -417,12 +494,18 @@ export function Chat() {
               className="t-composer-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="describe the risk · e.g. hedge $10k if BTC closes below 90k"
+              placeholder="what weather costs you money? · e.g. cold weekends empty our patio"
               disabled={isBusy}
             />
             <button type="submit" className="t-send-btn" disabled={!input.trim() || isBusy}>
               Send
             </button>
+          </div>
+          <div className="mt-2 flex items-center justify-between">
+            <RevenueUpload onLoaded={onRevenueLoaded} disabled={isBusy} />
+            <span className="text-[10px] text-[var(--text-faint)]">
+              date,revenue — your takings never leave the server
+            </span>
           </div>
         </form>
       </main>
@@ -432,16 +515,17 @@ export function Chat() {
 
 function Welcome({ onPick }: { onPick: (text: string) => void }) {
   const examples = [
-    "Outdoor wedding in Madrid Saturday, $5k at risk if patio is too cold.",
-    "$10k crypto treasury — hedge me if BTC closes below $90k by year-end.",
-    "I'm long a sports-betting startup. Hedge $3k if the Super Bowl is a blowout.",
-    "Pharma exposure — $20k at risk if FDA rejects the lead approval.",
+    "Cold weekends empty our patio in Chicago — what can I do?",
+    "I run an ice cream shop. How much does a cool July cost me?",
+    "Rain kills our outdoor events in Miami. Is there cover for that?",
+    "What weather contracts settle near Denver?",
   ];
   return (
     <div className="space-y-3">
       <p className="text-[var(--text-2)] leading-relaxed text-[13px]">
-        Event-risk insurance via Polymarket. Tell me what&apos;s at risk and the
-        dollar amount — I&apos;ll size the trade and place it once you confirm.
+        Parametric weather cover for small businesses, priced on Kalshi. Tell me
+        what weather costs you money. Upload a year of daily takings and
+        I&apos;ll measure what it actually costs, then size cover against it.
       </p>
       <ul className="space-y-1.5 mt-3">
         {examples.map((ex) => (
