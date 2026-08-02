@@ -144,14 +144,24 @@ export interface Ladder {
   rungs: Market[];
 }
 
-export interface HedgeQuote {
-  yesPriceUsdc: number;
-  costBudgetUsdc: number;
-  sharesAffordable: number;
-  maxPayoutUsdc: number;
-  profitIfYesUsdc: number;
-  roiIfYesPct: number;
-  roiIfNoPct: number;
-  exposureValueUsdc: number | null;
+/**
+ * Cover priced as insurance.
+ *
+ * Deliberately carries no return figure. Premium spent in a season where the
+ * weather cooperated is the cost of not carrying the risk, and framing that as
+ * a total loss invites a client to judge cover the way they would judge a bet.
+ */
+export interface CoverQuote {
+  /** Price of one contract on the side bought, 0–1. */
+  pricePerContract: number;
+  /** What the client pays. */
+  premiumUsdc: number;
+  contracts: number;
+  /** Most this position can pay — the cover limit. */
+  limitUsdc: number;
+  /** Limit less premium: what actually lands if it triggers. */
+  netIfTriggeredUsdc: number;
+  exposureUsdc: number | null;
+  /** Limit ÷ exposure. Above 1 the position pays more than the loss. */
   coverageRatio: number | null;
 }

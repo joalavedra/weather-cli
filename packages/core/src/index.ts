@@ -4,6 +4,7 @@ export * from "./observations.js";
 export * from "./loss.js";
 export * from "./geobasis.js";
 export * from "./backtest.js";
+export * from "./cover.js";
 export * from "./venue.js";
 export * from "./hedge.js";
 export * from "./basis.js";

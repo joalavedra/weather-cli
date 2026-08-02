@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { BasisAssessment, HedgeQuote } from "@weather/core";
+import type { BasisAssessment, CoverQuote } from "@weather/core";
 import { WalletPanel } from "@/components/WalletPanel";
 
 interface MarketSummary {
@@ -26,14 +26,14 @@ export type Pin =
       key: string;
       market: MarketSummary;
       side: "Yes" | "No";
-      quote: HedgeQuote;
+      quote: CoverQuote;
     }
   | {
       kind: "basis";
       key: string;
       market: MarketSummary;
       side: "Yes" | "No";
-      quote: HedgeQuote;
+      quote: CoverQuote;
       basis: BasisAssessment;
     }
   | {
@@ -121,31 +121,22 @@ function QuoteBlock({
   quote,
 }: {
   side: "Yes" | "No";
-  quote: HedgeQuote;
+  quote: CoverQuote;
 }) {
   const rows: Array<[string, string, string?]> = [
     ["Side", side.toUpperCase()],
-    ["Price", `${(quote.yesPriceUsdc * 100).toFixed(1)}¢`],
-    ["Cost", fmtUsd(quote.costBudgetUsdc)],
-    ["Shares", quote.sharesAffordable.toFixed(2)],
-    ["Max payout", fmtUsd(quote.maxPayoutUsdc)],
-    [
-      "If trigger",
-      `+${fmtUsd(quote.profitIfYesUsdc)} (${quote.roiIfYesPct.toFixed(1)}%)`,
-      "pos",
-    ],
-    [
-      "If no hit",
-      `-${fmtUsd(quote.costBudgetUsdc)} (${quote.roiIfNoPct.toFixed(1)}%)`,
-      "neg",
-    ],
+    ["Price", `${(quote.pricePerContract * 100).toFixed(1)}¢`],
+    ["Premium", fmtUsd(quote.premiumUsdc)],
+    ["Contracts", quote.contracts.toFixed(2)],
+    ["Cover limit", fmtUsd(quote.limitUsdc)],
+    ["If triggered", `+${fmtUsd(quote.netIfTriggeredUsdc)} after premium`, "pos"],
   ];
-  if (quote.exposureValueUsdc !== null && quote.coverageRatio !== null) {
+  if (quote.exposureUsdc !== null && quote.coverageRatio !== null) {
     rows.push(
-      ["Exposure", fmtUsd(quote.exposureValueUsdc)],
+      ["Exposure", fmtUsd(quote.exposureUsdc)],
       [
         "Coverage",
-        `${(quote.coverageRatio * 100).toFixed(1)}% / ${fmtUsdShort(quote.exposureValueUsdc)}`,
+        `${(quote.coverageRatio * 100).toFixed(1)}% / ${fmtUsdShort(quote.exposureUsdc)}`,
         "amber",
       ],
     );
@@ -308,7 +299,7 @@ function HistoryRow({ pin }: { pin: Pin }) {
       <li className="text-[10.5px] text-[var(--text-dim)] truncate flex items-center gap-2">
         <span className="text-[var(--text-faint)]">›</span>
         <span className="text-[var(--amber)] tabular-nums">
-          {pin.side.toUpperCase()} {fmtUsdShort(pin.quote.costBudgetUsdc)}
+          {pin.side.toUpperCase()} {fmtUsdShort(pin.quote.premiumUsdc)}
         </span>
         <span className="truncate">{pin.market.question}</span>
       </li>

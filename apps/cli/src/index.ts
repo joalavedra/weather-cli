@@ -5,7 +5,7 @@ import {
   alignSamples,
   backtest,
   computeBasisRisk,
-  computeHedge,
+  priceCover,
   dailyHistory,
   describeFit,
   describeGeoBasis,
@@ -16,8 +16,10 @@ import {
   describeBacktest,
   measureGeographicBasis,
   quoteFromMarket,
+  coverProfile,
   selectLossRungs,
   sizeLegsFromHistory,
+  solveCover,
 } from "@weather/core";
 import type {
   BasisAssessment,
@@ -25,7 +27,7 @@ import type {
   CoverQuery,
   GeoPoint,
   RevenueDay,
-  HedgeQuote,
+  CoverQuote,
   Ladder,
   Market,
   Peril,
@@ -122,19 +124,18 @@ function printLadder(ladder: Ladder): void {
   process.stdout.write(`\n  ${ladder.rungs.length} rungs. Buy the buckets your loss lives in.\n`);
 }
 
-function printQuote(quote: HedgeQuote): void {
+function printQuote(quote: CoverQuote): void {
   if (isJson()) return emitJson(quote);
   const lines = [
-    `Contract price:   ${(quote.yesPriceUsdc * 100).toFixed(1)}¢`,
-    `Premium:          $${quote.costBudgetUsdc.toFixed(2)}`,
-    `Contracts:        ${quote.sharesAffordable.toFixed(2)}`,
-    `Max payout:       $${quote.maxPayoutUsdc.toFixed(2)}`,
-    `If it triggers:   +$${quote.profitIfYesUsdc.toFixed(2)} net of premium`,
-    `If it doesn't:    -$${quote.costBudgetUsdc.toFixed(2)} (the premium — this is the cost of cover)`,
+    `Contract price:   ${(quote.pricePerContract * 100).toFixed(1)}¢`,
+    `Premium:          $${quote.premiumUsdc.toFixed(2)}`,
+    `Contracts:        ${quote.contracts.toFixed(2)}`,
+    `Cover limit:      $${quote.limitUsdc.toFixed(2)}`,
+    `Net if triggered: +$${quote.netIfTriggeredUsdc.toFixed(2)} after premium`,
   ];
-  if (quote.exposureValueUsdc !== null && quote.coverageRatio !== null) {
+  if (quote.exposureUsdc !== null && quote.coverageRatio !== null) {
     lines.push(
-      `Exposure:         $${quote.exposureValueUsdc.toFixed(2)}`,
+      `Exposure:         $${quote.exposureUsdc.toFixed(2)}`,
       `Coverage:         ${(quote.coverageRatio * 100).toFixed(1)}% of exposure`,
     );
   }
@@ -592,6 +593,96 @@ program
   );
 
 program
+  .command("solve <eventTicker>")
+  .description("Solve the cover a business's loss curve implies, priced as a premium.")
+  .requiredOption("--revenue <csv>", "path to a date,revenue CSV")
+  .requiredOption("--premises <place>", "where the business is (name or lat,lon)")
+  .option("--months <list>", "calendar months the business is exposed, e.g. 5,6,7,8,9")
+  .option("--start <date>", "history start (YYYY-MM-DD)", "2022-01-01")
+  .option("--end <date>", "history end (YYYY-MM-DD)", "2025-12-31")
+  .action(
+    async (
+      eventTicker: string,
+      opts: {
+        revenue: string;
+        premises: string;
+        months?: string;
+        start: string;
+        end: string;
+      },
+    ) => {
+      const ladder = await kalshi.getLadder(eventTicker);
+      if (!ladder.peril) throw new Error(`${eventTicker} has no classified peril to measure`);
+      if (!ladder.settlement.station) {
+        throw new Error(`${eventTicker} does not name a settlement station in its rules`);
+      }
+      const [station, premises] = await Promise.all([
+        resolvePoint(ladder.settlement.station),
+        resolvePoint(opts.premises),
+      ]);
+      const rows = parseRevenueCsv(await readFile(opts.revenue, "utf8"));
+      const revenueDates = rows.map((r) => r.date).toSorted();
+      const [fitSeries] = await dailyHistory({
+        points: [premises],
+        start: revenueDates[0] ?? opts.start,
+        end: revenueDates.at(-1) ?? opts.end,
+        peril: ladder.peril,
+      });
+      if (!fitSeries) throw new Error("no observations returned for the premises");
+      const curve = fitLossCurve(alignSamples(rows, fitSeries), fitSeries.unit);
+
+      const [stationSeries, premisesSeries] = await dailyHistory({
+        points: [station, premises],
+        start: opts.start,
+        end: opts.end,
+        peril: ladder.peril,
+      });
+      if (!stationSeries || !premisesSeries) {
+        throw new Error("the archive returned no observations for those points");
+      }
+      const months = parseMonths(opts.months);
+      const plan = solveCover({
+        ladder,
+        curve,
+        station: stationSeries,
+        premises: premisesSeries,
+        ...(months.length > 0 && { months }),
+      });
+      if (isJson()) return emitJson({ curve, plan });
+
+      const unit = curve.unit === "F" ? "°F" : "";
+      process.stdout.write(`Cover for:        ${ladder.title}\n`);
+      process.stdout.write(`Settles at:       ${ladder.settlement.station}\n`);
+      process.stdout.write(`Premises:         ${premises.name ?? opts.premises}\n\n`);
+      process.stdout.write(`Attaches:         ${plan.direction} ${plan.attachment}${unit}\n`);
+      process.stdout.write(`Premium:          $${plan.premiumPerDayUsdc.toFixed(2)} per day of cover\n`);
+      process.stdout.write(`Cover limit:      $${Math.round(plan.limitUsdc).toLocaleString()} on the worst bucket\n`);
+      process.stdout.write(`Worst day seen:   -$${Math.round(plan.worstDayLossUsdc).toLocaleString()}, of which cover carries ${(plan.worstDayCovered * 100).toFixed(0)}%\n\n`);
+      for (const leg of plan.legs) {
+        process.stdout.write(
+          `  ${leg.label.padEnd(18)} ${String(leg.contracts).padStart(6)} contracts @ ${(leg.pricePerContract * 100).toFixed(0)}¢\n`,
+        );
+      }
+
+      // The point of the whole exercise: a flat net column across outcomes.
+      const values = plan.legs
+        .map((l) => l.strike.floor ?? (l.strike.cap ?? 0) - 2)
+        .concat([plan.attachment + 5]);
+      process.stdout.write(`\n  ${unit || "value"}   loss      payout     net\n`);
+      for (const row of coverProfile(plan, curve, values.toSorted((a, b) => a - b))) {
+        process.stdout.write(
+          `  ${String(row.value).padStart(4)}  -$${Math.round(row.lossUsdc).toString().padStart(6)}  +$${Math.round(row.payoutUsdc).toString().padStart(6)}  $${Math.round(row.netUsdc).toString().padStart(7)}\n`,
+        );
+      }
+
+      process.stdout.write(
+        `\nReplayed on ${plan.replay.days} ${plan.outOfSample ? "held-out" : "in-sample"} days: ${(plan.replay.swingReduction * 100).toFixed(0)}% smoother, paid on ${plan.replay.daysHurtAndPaid} of ${plan.replay.daysHurt} days that hurt.\n`,
+      );
+      for (const warning of plan.warnings) process.stdout.write(`  ! ${warning}\n`);
+    },
+  );
+
+program
   .command("hedge")
   .description("Manual cover calc from raw inputs (useful for what-if).")
   .requiredOption("--price <usdc>", "contract price 0.0-1.0")
@@ -599,10 +690,10 @@ program
   .option("--exposure <usdc>", "dollars at risk")
   .action((opts: { price: string; budget: string; exposure?: string }) => {
     printQuote(
-      computeHedge({
-        yesPriceUsdc: Number.parseFloat(opts.price),
-        costBudgetUsdc: Number.parseFloat(opts.budget),
-        ...(opts.exposure ? { exposureValueUsdc: Number.parseFloat(opts.exposure) } : {}),
+      priceCover({
+        pricePerContract: Number.parseFloat(opts.price),
+        premiumUsdc: Number.parseFloat(opts.budget),
+        ...(opts.exposure ? { exposureUsdc: Number.parseFloat(opts.exposure) } : {}),
       }),
     );
   });

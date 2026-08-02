@@ -6,7 +6,7 @@ import type { UIMessage } from "ai";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import Markdown from "react-markdown";
-import type { BasisAssessment, HedgeQuote } from "@weather/core";
+import type { BasisAssessment, CoverQuote } from "@weather/core";
 import { Workspace } from "@/components/Workspace";
 import type { Pin } from "@/components/Workspace";
 
@@ -28,13 +28,13 @@ interface MarketSummary {
 interface QuoteToolOutput {
   market: MarketSummary;
   side: "Yes" | "No";
-  quote: HedgeQuote;
+  quote: CoverQuote;
 }
 
 interface BasisToolOutput {
   market: MarketSummary;
   side: "Yes" | "No";
-  quote: HedgeQuote;
+  quote: CoverQuote;
   basis: BasisAssessment;
 }
 
@@ -116,7 +116,7 @@ function deriveState(messages: UIMessage[]): {
         });
         addHint(
           m.id,
-          `pinned trade · ${out.side} · $${out.quote.costBudgetUsdc.toFixed(0)}`,
+          `pinned cover · ${out.side} · $${out.quote.premiumUsdc.toFixed(0)} premium`,
         );
       } else if (part.type === "tool-estimate_correlation") {
         if (part.state !== "output-available") continue;

@@ -98,6 +98,40 @@ Rather than eyeball the correlation, `estimateTriggerCorrelation` decomposes it 
 
 When no single contract scores well, `composeBasket` spreads a budget across proxies that miss in different ways. Combined coverage assumes independent misses and is capped below 100%, so a basket never poses as a perfect hedge.
 
+## Solving the cover, not budgeting for it
+
+`priceCover` answers "I have $300, what does it buy?" — a trading question that is the wrong way round for insurance. Nobody decides how much fire cover to hold by picking a premium first; they start from the building.
+
+`weather solve` starts from the loss. It sizes each rung to the loss expected on the days that rung pays, prices the result, and replays it on days the sizing never saw.
+
+```
+$ weather solve KXHIGHCHI-26AUG02 --revenue takings.csv \
+    --premises 41.93,-87.64 --months 5,6,7,8,9
+
+Attaches:         below 72.5°F
+Premium:          $21.42 per day of cover
+Cover limit:      $1,704 on the worst bucket
+Worst day seen:   -$3,571, of which cover carries 48%
+
+  70° or below         1704 contracts @ 1¢
+  71° to 72°            438 contracts @ 1¢
+
+  °F   loss      payout     net
+    68  -$   623  +$  1704  $   1060
+    71  -$   208  +$   438  $    209
+  77.5  -$     0  +$     0  $    -21
+
+Replayed on 153 held-out days: 46% smoother, paid on 33 of 51 days that hurt.
+```
+
+Sizing is an output here, not an input. The premium falls out of the loss.
+
+That last table is the product in one view: what the day costs, what the cover returns, what's left. A good structure flattens the net column. It also shows the honest limitation of bucketed cover — the `70° or below` rung pays a flat amount whether it's 68° or 55°, so it overpays at the top of the bucket and underpays at the bottom. A step function approximating a slope.
+
+**Sizing is solved because it can't be guessed.** Holding a flat count on every rung, the swing reduction runs 4% → 19% → 37% → **−1%** as the count climbs. Too little cover does nothing; too much turns the position into a bet that *adds* volatility. The optimum is interior and asymmetric — the deep-cold rung wants four times the contracts of the mild one, because the loss conditional on landing there is far larger.
+
+Two guards come with it. Structures are sized on the earlier part of history and scored on a held-out tail, because sizing and scoring on the same days flatters every structure; when history is too short to split, the plan says so. And `priceCover` refuses outright to build a position whose payout would exceed the exposure it protects, naming the premium that fits instead. That rule lives in code rather than in a prompt, because a rule a model can talk itself out of is not a rule.
+
 ## Backtesting before you bind
 
 With a fitted curve and both locations' history in hand, the structure can be replayed against the seasons that already happened. Rungs are sized to the loss each one stands in for, so the contract count is solved rather than guessed.
@@ -144,10 +178,11 @@ weather-cli/
 │   ├── loss.ts           # fit a business's loss curve from its own revenue
 │   ├── geobasis.ts       # measured station-vs-premises trigger correlation
 │   ├── backtest.ts       # replay a structure against past seasons; solve sizing
+│   ├── cover.ts          # solve cover from a loss curve, priced as a premium
+│   ├── hedge.ts          # price one contract as insurance; exposure invariant
 │   ├── kalshi.ts         # Kalshi adapter (public HTTP, no credentials)
 │   ├── polymarket.ts     # Polymarket adapter (wraps the `polymarket` CLI)
 │   ├── venue.ts          # Venue interface + registry + routing
-│   ├── hedge.ts          # sizing and coverage math
 │   ├── basis.ts          # computeBasisRisk / composeBasket
 │   ├── elicit.ts         # estimateTriggerCorrelation
 │   └── trading.ts        # Polymarket wallet, approvals, orders
@@ -183,6 +218,8 @@ weather contracts --location Miami --peril rain      # skip straight to contract
 weather fit --revenue takings.csv --location Chicago       # fit your loss curve
 weather station-basis --station "Chicago Midway" --premises "41.93,-87.64" \
   --threshold 72 --direction below                         # measure the real basis
+weather solve KXHIGHCHI-26AUG02 --revenue takings.csv \
+  --premises 41.93,-87.64 --months 5,6,7,8,9               # solve the cover
 weather backtest KXHIGHCHI-26AUG02 --revenue takings.csv \
   --premises 41.93,-87.64 --months 5,6,7,8,9               # replay past seasons
 

@@ -11,16 +11,19 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 - **Weather-only scope.** Politics, sports, crypto and entertainment routing removed from the core, tools, prompt and docs. A broker that also writes Lakers futures reads as a betting app.
 - **Weather data** (`observations.ts`, `loss.ts`, `geobasis.ts`). Open-Meteo archive and geocoding, free and keyless. `fitLossCurve` recovers the threshold and dollars-per-degree from a business's own daily revenue, reporting how much of the revenue swing weather explains at all — a weak fit means cover isn't warranted, and the tool says so. `measureGeographicBasis` compares the settlement station against the premises over years of history and returns the *measured* trigger correlation.
 - **Measured basis beats estimated basis.** Chicago Midway and a lakefront bar nine miles away correlate at 0.991 but the contract catches only 89.6% of the bar's loss days. Correlation describes the whole distribution; a trigger cares about one edge. The `measure_geographic_basis` tool now feeds `assess_basis_risk`, and the prompt falls back to `estimate_correlation` only where nothing is measurable.
-- **Checks.** `pnpm check` runs oxlint, `tsc --noEmit` across three packages, and vitest (112 tests).
+- **Checks.** `pnpm check` runs oxlint, `tsc --noEmit` across three packages, and vitest (142 tests).
 
 - **Backtest and solved sizing** (`backtest.ts`). Replays a structure over past seasons and reports the change in daily swing, the loss ratio, the worst day, and how many of the days that actually hurt the cover paid on. `sizeLegsFromHistory` sets each rung's contract count to the loss expected on the days that rung pays, which beat every flat count tried by hand (44% swing reduction against a best-manual 37%).
 - **Overhedging is visible and real.** At a flat count, swing reduction runs 4% → 19% → 37% → −1% as size climbs: too much cover adds volatility rather than removing it. The optimum is interior and asymmetric across rungs, which is the case for solving sizing instead of exposing it as a knob.
 
+- **Cover solved from the loss** (`cover.ts`, rewritten `hedge.ts`). `solveCover` starts from the fitted curve rather than a budget: it sizes each rung to the loss expected on the days that rung pays, prices it as a premium, and returns a `coverProfile` showing loss, payout and net across outcomes. Quotes now carry premium, contracts, limit and net-if-triggered, and no return figure at all.
+- **The exposure invariant is enforced in code.** `priceCover` refuses a position whose payout would exceed stated exposure and names the premium that fits. Previously this was prompt text, which a model can talk itself out of.
+- **Out-of-sample evaluation.** Structures are sized on the earlier part of history and scored on a held-out tail. Sizing and scoring on the same days flatters every structure; when history is too short to split, `outOfSample` is false and the plan warns.
+
 ## Next
 - **Revenue upload in the web app.** Loss fitting is CLI-only today because it needs a CSV. The chat broker needs a file drop before an owner can use it.
 - **Fair-value check.** Compare the market-implied probability of a rung against the climatological base rate from the same archive, so a client can see whether cover is cheap or dear.
-- **Insurance framing of the math.** `sizeLegsFromHistory` solves sizing for the backtest, but `hedge.ts` still takes a budget and buys what it affords, returning ROI. Route quoting through the solved structure so outputs become premium, limit, attachment point and expected loss ratio, and enforce "never size above measured exposure" as a code invariant rather than prompt text.
-- **Backtest in the chat broker.** The replay is CLI-only for the same reason loss fitting is: it needs a revenue CSV.
+- **Solve and backtest in the chat broker.** Both are CLI-only for the same reason loss fitting is: they need a revenue CSV. The chat broker still quotes one contract at a time against a budget the client names, which is the weaker path.
 - **Historical prices.** Premium is charged at today's ask on every replayed day. Kalshi publishes candlesticks per market; using them would make the loss ratio trustworthy rather than indicative.
 - **MCP server.** The tool layer is trapped in `apps/web/lib/tools.ts`. Extract it so one implementation serves MCP, HTTP and the CLI, and the client's own agent can buy cover.
 - **Standing policies.** There is no `Policy` object — only one-shot quotes. Real cover renews, rolls, expires and settles. "Keep me covered for cold LA weekends through October, ≤$25/day" is a scheduled agent plus spend limits, and it's the difference between a demo and a product.
@@ -40,4 +43,4 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 ## Known debt
 
 - `--type-aware` linting flags `no-unsafe-type-assertion` across `Chat.tsx` and `WalletPanel.tsx`, where AI SDK tool outputs are narrowed from `unknown`. Fixing it properly means deriving those types from the tool schemas. The default `pnpm lint` gate is plain oxlint and is clean.
-- `apps/web` still renders quotes in trading vocabulary ("Cost", "Shares"). That's part of the insurance-framing work above.
+- Bucketed cover approximates a sloped loss with a step function, so it overpays at the top of a bucket and underpays at the bottom. Visible in `coverProfile`; narrower rungs would reduce it.

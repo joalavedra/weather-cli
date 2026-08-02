@@ -117,6 +117,22 @@ function readValues(daily: Record<string, unknown>, variable: string): Array<num
   return raw.map((v) => (typeof v === "number" && Number.isFinite(v) ? v : null));
 }
 
+/**
+ * Restrict a series to a date range, inclusive of `from` and exclusive of `to`.
+ * Used to hold out a period for out-of-sample evaluation.
+ */
+export function sliceByDate(series: DailySeries, from: string, to?: string): DailySeries {
+  const dates: string[] = [];
+  const values: Array<number | null> = [];
+  for (const [i, date] of series.dates.entries()) {
+    if (date < from) continue;
+    if (to !== undefined && date >= to) continue;
+    dates.push(date);
+    values.push(series.values[i] ?? null);
+  }
+  return { point: series.point, dates, values, unit: series.unit };
+}
+
 export interface HistoryArgs {
   points: GeoPoint[];
   /** ISO date, inclusive. */

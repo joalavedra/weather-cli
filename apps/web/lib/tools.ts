@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   composeBasket,
   computeBasisRisk,
-  computeHedge,
+  priceCover,
   dailyHistory,
   describeGeoBasis,
   estimateTriggerCorrelation,
@@ -194,7 +194,7 @@ export const computeHedgeQuoteTool = tool({
       .positive()
       .optional()
       .describe(
-        "Total value at risk in USDC if the bad outcome happens (used to compute coverage ratio).",
+        "Dollars at risk if the loss happens. Supplying it enables the exposure invariant: a position whose payout would exceed the loss it protects is rejected as a bet rather than cover.",
       ),
   }),
   execute: async ({ id, side, budgetUsdc, exposureValueUsdc }) => {
@@ -407,16 +407,16 @@ export const whatIfTool = tool({
   description:
     "Compute a quote from raw inputs without fetching a market. Useful for what-if scenarios.",
   inputSchema: z.object({
-    yesPriceUsdc: z.number().min(0.001).max(0.999),
-    budgetUsdc: z.number().positive(),
-    exposureValueUsdc: z.number().positive().optional(),
+    pricePerContract: z.number().min(0.001).max(0.999),
+    premiumUsdc: z.number().positive(),
+    exposureUsdc: z.number().positive().optional(),
   }),
-  execute: ({ yesPriceUsdc, budgetUsdc, exposureValueUsdc }) => {
+  execute: ({ pricePerContract, premiumUsdc, exposureUsdc }) => {
     return {
-      quote: computeHedge({
-        yesPriceUsdc,
-        costBudgetUsdc: budgetUsdc,
-        ...(exposureValueUsdc !== undefined && { exposureValueUsdc }),
+      quote: priceCover({
+        pricePerContract,
+        premiumUsdc,
+        ...(exposureUsdc !== undefined && { exposureUsdc }),
       }),
     };
   },
