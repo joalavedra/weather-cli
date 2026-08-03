@@ -31,7 +31,9 @@ export function CoverProfileChart({
 }) {
   const units = useUnits();
   const unitLabel = measureUnitLabel(unit, units);
-  const convert = (v: number) => (unit === "F" ? tempValue(v, units) : v);
+  const source = unit === "C" ? "C" : "F";
+  const convert = (v: number) =>
+    unit === "F" || unit === "C" ? tempValue(v, units, source) : v;
   const data = profile.map((row) => ({
     value: convert(row.value),
     loss: -row.lossUsdc,

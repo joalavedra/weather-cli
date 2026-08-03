@@ -33,13 +33,20 @@ export interface DailySeries {
   unit: StrikeUnit;
 }
 
-/** Open-Meteo daily variable and unit for each peril we can measure. */
-const PERIL_VARIABLE: Partial<Record<Peril, { variable: string; unit: StrikeUnit }>> = {
-  high_temp: { variable: "temperature_2m_max", unit: "F" },
-  low_temp: { variable: "temperature_2m_min", unit: "F" },
-  rain: { variable: "precipitation_sum", unit: "in" },
-  snow: { variable: "snowfall_sum", unit: "in" },
+/** Open-Meteo daily variable for each peril we can measure. */
+const PERIL_VARIABLE: Partial<Record<Peril, string>> = {
+  high_temp: "temperature_2m_max",
+  low_temp: "temperature_2m_min",
+  rain: "precipitation_sum",
+  snow: "snowfall_sum",
 };
+
+function unitFor(peril: Peril, scale: TemperatureScale): StrikeUnit {
+  return peril === "high_temp" || peril === "low_temp" ? scale : "in";
+}
+
+/** Which temperature scale observations should come back in. */
+export type TemperatureScale = "F" | "C";
 
 export function isMeasurable(peril: Peril): boolean {
   return peril in PERIL_VARIABLE;
@@ -140,6 +147,11 @@ export interface HistoryArgs {
   /** ISO date, inclusive. */
   end: string;
   peril: Peril;
+  /**
+   * Scale to return temperatures in. Must match the scale the contract settles
+   * in, or a threshold comparison silently compares 30°C against 30°F.
+   */
+  scale?: TemperatureScale;
 }
 
 /**
@@ -150,8 +162,9 @@ export interface HistoryArgs {
  * station against a business's premises costs one round trip, not two.
  */
 export async function dailyHistory(args: HistoryArgs): Promise<DailySeries[]> {
-  const spec = PERIL_VARIABLE[args.peril];
-  if (!spec) {
+  const scale = args.scale ?? "F";
+  const variable = PERIL_VARIABLE[args.peril];
+  if (!variable) {
     throw new Error(
       `no observation series for peril "${args.peril}" (measurable: ${Object.keys(PERIL_VARIABLE).join(", ")})`,
     );
@@ -162,15 +175,15 @@ export async function dailyHistory(args: HistoryArgs): Promise<DailySeries[]> {
   url.searchParams.set("longitude", args.points.map((p) => p.longitude).join(","));
   url.searchParams.set("start_date", args.start);
   url.searchParams.set("end_date", args.end);
-  url.searchParams.set("daily", spec.variable);
-  url.searchParams.set("temperature_unit", "fahrenheit");
+  url.searchParams.set("daily", variable);
+  url.searchParams.set("temperature_unit", scale === "C" ? "celsius" : "fahrenheit");
   url.searchParams.set("precipitation_unit", "inch");
   const raw = await getJson(url);
   const locations = z.array(ArchiveLocation).parse(Array.isArray(raw) ? raw : [raw]);
   return locations.map((loc, i) => ({
     point: args.points[i] ?? { latitude: loc.latitude, longitude: loc.longitude },
     dates: loc.daily.time,
-    values: readValues(loc.daily, spec.variable),
-    unit: spec.unit,
+    values: readValues(loc.daily, variable),
+    unit: unitFor(args.peril, scale),
   }));
 }

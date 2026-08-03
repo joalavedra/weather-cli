@@ -24,7 +24,12 @@ export function BasisCard({
   const units = useUnits();
   const unitLabel = measureUnitLabel(result?.measurement.unit ?? null, units);
   // A gap is a difference, so it scales by the ratio and takes no offset.
-  const scale = units === "metric" && result?.measurement.unit === "F" ? 5 / 9 : 1;
+  const scale =
+    result?.measurement.unit === "F" && units === "metric"
+      ? 5 / 9
+      : result?.measurement.unit === "C" && units === "imperial"
+        ? 9 / 5
+        : 1;
   const weak = result ? result.measurement.triggerCorrelation < WEAK_TRIGGER : false;
 
   return (

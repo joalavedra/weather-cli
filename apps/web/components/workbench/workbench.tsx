@@ -90,10 +90,10 @@ export function Workbench() {
     void api.fetchDataset(active.datasetId).then(setDataset).catch(() => undefined);
     setCurve({ data: null, loading: true, error: null });
     void api
-      .fetchCurve(active.id)
+      .fetchCurve(active.id, units === "metric" ? "C" : "F")
       .then((data) => setCurve({ data, loading: false, error: null }))
       .catch((error: unknown) => setCurve({ data: null, loading: false, error: message(error) }));
-  }, [active?.id, active?.datasetId]);
+  }, [active?.id, active?.datasetId, units]);
 
   const pickLadder = useCallback(
     (ticker: string) => {

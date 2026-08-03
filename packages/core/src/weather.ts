@@ -72,9 +72,17 @@ export function stationFromRules(rules: string | null | undefined): string | nul
   return station === undefined || station === "" ? null : station;
 }
 
-/** Infer the measurement unit a strike is denominated in from its label. */
+/**
+ * Infer the measurement unit a strike is denominated in from its label.
+ *
+ * The scale is read explicitly rather than assumed from a degree sign, because
+ * "30°" means very different weather depending on which one it is — and the two
+ * venues disagree, so guessing would silently misprice every international
+ * ladder.
+ */
 export function unitFromLabel(label: string): StrikeUnit {
-  if (/°/.test(label)) return "F";
+  if (/°\s*C\b/i.test(label)) return "C";
+  if (/°\s*F\b/i.test(label) || /°/.test(label)) return "F";
   if (/\b(?:in|inch|inches)\b|"/.test(label)) return "in";
   if (/\d/.test(label)) return "count";
   return null;
@@ -87,5 +95,5 @@ export function normalizeStrikeType(raw: string | null | undefined): StrikeType 
 
 /** Units that take only whole values, where an exclusive bound has a next value. */
 export function isIntegralUnit(unit: StrikeUnit): boolean {
-  return unit === "F" || unit === "count";
+  return unit === "F" || unit === "C" || unit === "count";
 }
