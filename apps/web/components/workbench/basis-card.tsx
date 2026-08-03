@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { BasisScatterChart } from "@/components/charts/basis-scatter-chart";
 import { Note, Stat, pct } from "@/components/workbench/primitives";
+import { measureUnitLabel, useUnits } from "@/lib/units";
 import type { BasisResult } from "@/lib/analysis";
 
 /** Below this share of loss days caught, the station is the wrong proxy. */
@@ -20,7 +21,10 @@ export function BasisCard({
   loading: boolean;
   error: string | null;
 }) {
-  const unitLabel = result?.measurement.unit === "F" ? "°F" : "";
+  const units = useUnits();
+  const unitLabel = measureUnitLabel(result?.measurement.unit ?? null, units);
+  // A gap is a difference, so it scales by the ratio and takes no offset.
+  const scale = units === "metric" && result?.measurement.unit === "F" ? 5 / 9 : 1;
   const weak = result ? result.measurement.triggerCorrelation < WEAK_TRIGGER : false;
 
   return (
@@ -56,8 +60,8 @@ export function BasisCard({
               />
               <Stat
                 label="Typical gap"
-                value={`${result.measurement.meanAbsDifference.toFixed(1)}${unitLabel}`}
-                hint={`worst ${result.measurement.maxAbsDifference.toFixed(1)}${unitLabel}`}
+                value={`${(result.measurement.meanAbsDifference * scale).toFixed(1)}${unitLabel}`}
+                hint={`worst ${(result.measurement.maxAbsDifference * scale).toFixed(1)}${unitLabel}`}
               />
               <Stat label="Days compared" value={result.measurement.days.toLocaleString()} />
             </div>
@@ -67,7 +71,7 @@ export function BasisCard({
             <BasisScatterChart
               scatter={result.scatter}
               threshold={result.measurement.threshold}
-              unitLabel={unitLabel}
+              unit={result.measurement.unit}
             />
             <Note>
               Each dot is one day: the station&apos;s reading across, the business&apos;s down.

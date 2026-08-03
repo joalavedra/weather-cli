@@ -15,11 +15,20 @@ import {
   describeGeoBasis,
   fitLossCurve,
   geocode,
+  isMeasurable,
   kalshi,
   measureGeographicBasis,
   solveCover,
 } from "@weather/core";
-import type { CoverPlan, DailySeries, GeoPoint, Ladder, LossCurve } from "@weather/core";
+import type {
+  CoverPlan,
+  DailySeries,
+  GeoPoint,
+  Ladder,
+  LossCurve,
+  Peril,
+  WeatherSeries,
+} from "@weather/core";
 import { loadDataset } from "@/lib/datasets";
 import { getJson, putJson } from "@/lib/store";
 import type { Client } from "@/lib/clients";
@@ -242,6 +251,127 @@ export async function measureClientBasis(
   };
 }
 
+export interface PlaceSuggestion {
+  label: string;
+  latitude: number;
+  longitude: number;
+  country: string | null;
+}
+
+/**
+ * Places matching a partial name, for the location field.
+ *
+ * Typing a city name and accepting whatever the geocoder picks first is how a
+ * business ends up pinned to a city centre miles from its actual premises, and
+ * cover is measured at one specific station. Offering the candidates makes the
+ * choice visible.
+ */
+export async function searchPlaces(query: string): Promise<PlaceSuggestion[]> {
+  const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
+  url.searchParams.set("name", query);
+  url.searchParams.set("count", "8");
+  url.searchParams.set("language", "en");
+  url.searchParams.set("format", "json");
+  const response = await fetch(url, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`place search failed (${response.status})`);
+  const parsed = (await response.json()) as {
+    results?: Array<{
+      name: string;
+      latitude: number;
+      longitude: number;
+      admin1?: string | null;
+      country?: string | null;
+      country_code?: string | null;
+    }>;
+  };
+  return (parsed.results ?? []).map((r) => ({
+    label: [r.name, r.admin1, r.country].filter(Boolean).join(", "),
+    latitude: r.latitude,
+    longitude: r.longitude,
+    country: r.country_code ?? null,
+  }));
+}
+
+export interface CoveragePlace {
+  location: string;
+  latitude: number;
+  longitude: number;
+  /** Perils with at least one live event at this location. */
+  perils: Peril[];
+}
+
+/**
+ * Where cover actually exists right now.
+ *
+ * "Is my city covered?" is the first question anyone asks and the product had
+ * no way to answer it except by adding a business and finding out. Only series
+ * with an open event count — a listed-but-dormant ticker is not cover.
+ */
+export async function listCoverage(): Promise<CoveragePlace[]> {
+  const cached = await getJson<{ at: number; places: CoveragePlace[] }>(COVERAGE_CACHE_KEY).catch(
+    () => null,
+  );
+  if (cached && Date.now() - cached.at < COVERAGE_TTL_MS) return cached.places;
+
+  const catalogue = await kalshi.listWeatherSeries();
+  /*
+   * Only perils with an observation series behind them.
+   *
+   * Coverage should promise what the product can actually deliver end to end.
+   * Hurricane and tornado series are regional counts with no station reading to
+   * fit a loss curve against, and their titles ("Number of named storms")
+   * aren't places at all — one was surfacing as a city called "Names".
+   */
+  const candidates = catalogue.filter((s) => s.location !== null && isMeasurable(s.peril));
+
+  const live = await mapWithConcurrency(candidates, EVENT_CONCURRENCY, async (series) =>
+    (await hasOpenEvent(series.ticker)) ? series : null,
+  );
+
+  const resolved = await mapWithConcurrency(
+    live.filter((s): s is WeatherSeries => s !== null),
+    GEOCODE_CONCURRENCY,
+    async (series) => {
+      const point = await cachedGeocode(series.location as string);
+      return point ? { series, point } : null;
+    },
+  );
+  await saveGeocodeCache();
+
+  /*
+   * Merge on coordinates, not on the series title.
+   *
+   * Kalshi names the same city several ways — NYC and New York, LA and Los
+   * Angeles, NOLA and New Orleans — so grouping by title split one city into
+   * several half-covered entries. The geocoder collapses them, and the longest
+   * label wins as the most readable of the aliases.
+   */
+  const byPoint = new Map<string, { label: string; point: GeoPoint; perils: Set<Peril> }>();
+  for (const item of resolved) {
+    if (!item) continue;
+    const key = `${item.point.latitude.toFixed(2)},${item.point.longitude.toFixed(2)}`;
+    const label = item.point.name?.split(",")[0] ?? (item.series.location as string);
+    const entry = byPoint.get(key) ?? { label, point: item.point, perils: new Set<Peril>() };
+    if (label.length > entry.label.length) entry.label = label;
+    entry.perils.add(item.series.peril);
+    byPoint.set(key, entry);
+  }
+
+  const places: CoveragePlace[] = [...byPoint.values()]
+    .map((entry) => ({
+      location: entry.label,
+      latitude: entry.point.latitude,
+      longitude: entry.point.longitude,
+      perils: [...entry.perils].toSorted(),
+    }))
+    .toSorted((a, b) => b.perils.length - a.perils.length || a.location.localeCompare(b.location));
+  await putJson(COVERAGE_CACHE_KEY, { at: Date.now(), places }).catch(() => undefined);
+  return places;
+}
+
 export interface CoverOption {
   seriesTicker: string;
   title: string;
@@ -284,6 +414,37 @@ async function saveGeocodeCache(): Promise<void> {
 const GEOCODE_CONCURRENCY = 4;
 
 const GEOCODE_ATTEMPTS = 3;
+
+/**
+ * Concurrent Kalshi event lookups when scanning the catalogue. Higher and the
+ * exchange starts dropping connections, which reads as "this city has no
+ * cover" — the same failure mode that hid Chicago behind a dead ticker.
+ */
+const EVENT_CONCURRENCY = 4;
+
+const EVENT_ATTEMPTS = 4;
+
+/** Coverage turns over daily at most, and the scan is slow. */
+const COVERAGE_CACHE_KEY = "cache/coverage";
+const COVERAGE_TTL_MS = 60 * 60_000;
+
+/**
+ * Whether a series has anything open, retried with backoff.
+ *
+ * A dropped request is indistinguishable from an empty result, and treating one
+ * as the other tells a broker their city has no cover when it does — Chicago
+ * disappeared from the coverage list this way while answering 20/20 in
+ * isolation. The scan is cached for an hour, so paying for reliability once is
+ * the right trade.
+ */
+async function hasOpenEvent(seriesTicker: string): Promise<boolean> {
+  for (let attempt = 0; attempt < EVENT_ATTEMPTS; attempt++) {
+    const events = await kalshi.listEvents(seriesTicker, 1).catch(() => null);
+    if (events !== null) return events.length > 0;
+    await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+  }
+  return false;
+}
 
 async function mapWithConcurrency<T, R>(
   items: T[],

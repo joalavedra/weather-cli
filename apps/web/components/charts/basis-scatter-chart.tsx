@@ -1,7 +1,9 @@
 "use client";
 
 import { CartesianGrid, ReferenceLine, Scatter, ScatterChart, XAxis, YAxis, ZAxis } from "recharts";
+import type { StrikeUnit } from "@weather/core";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { measureUnitLabel, tempValue, useUnits } from "@/lib/units";
 import type { ChartConfig } from "@/components/ui/chart";
 
 const config = {
@@ -19,12 +21,19 @@ const config = {
 export function BasisScatterChart({
   scatter,
   threshold,
-  unitLabel,
+  unit,
 }: {
   scatter: Array<{ station: number; premises: number }>;
   threshold: number;
-  unitLabel: string;
+  unit: StrikeUnit;
 }) {
+  const units = useUnits();
+  const unitLabel = measureUnitLabel(unit, units);
+  const convert = (v: number) => (unit === "F" ? tempValue(v, units) : v);
+  const points = scatter.map((p) => ({
+    station: convert(p.station),
+    premises: convert(p.premises),
+  }));
   return (
     <ChartContainer config={config} className="h-[260px] w-full">
       <ScatterChart accessibilityLayer margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
@@ -62,9 +71,9 @@ export function BasisScatterChart({
             />
           }
         />
-        <ReferenceLine x={threshold} stroke="var(--chart-5)" strokeDasharray="4 4" />
-        <ReferenceLine y={threshold} stroke="var(--chart-5)" strokeDasharray="4 4" />
-        <Scatter data={scatter} fill="var(--color-days)" fillOpacity={0.4} />
+        <ReferenceLine x={convert(threshold)} stroke="var(--chart-5)" strokeDasharray="4 4" />
+        <ReferenceLine y={convert(threshold)} stroke="var(--chart-5)" strokeDasharray="4 4" />
+        <Scatter data={points} fill="var(--color-days)" fillOpacity={0.4} />
       </ScatterChart>
     </ChartContainer>
   );

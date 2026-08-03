@@ -10,10 +10,10 @@ import type { Peril, StrikeType, StrikeUnit } from "./types.js";
 
 const PERIL_RULES: ReadonlyArray<readonly [RegExp, Peril]> = [
   [/hurricane|\bhur\b|tropical storm|named storm/i, "hurricane"],
-  [/tornado/i, "tornado"],
-  [/snow/i, "snow"],
-  [/rain|precipitation/i, "rain"],
-  [/wind/i, "wind"],
+  [/\btornado(?:es|s)?\b/i, "tornado"],
+  [/\bsnow(?:fall|s|y)?\b/i, "snow"],
+  [/\brain(?:fall|s)?\b|precipitation/i, "rain"],
+  [/\bwind(?:s|y)?\b/i, "wind"],
   [/highest temp|high temp|maximum temp|max temp|hottest|heatwave/i, "high_temp"],
   [/lowest temp|low temp|minimum temp|min temp|coldest|frost|freeze/i, "low_temp"],
 ];

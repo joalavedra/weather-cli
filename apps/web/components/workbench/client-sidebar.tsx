@@ -4,6 +4,7 @@ import { CloudRain, Snowflake, Sun, Thermometer, Wind } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { CoverageDialog } from "@/components/workbench/coverage-dialog";
 import { NewClientDialog } from "@/components/workbench/new-client-dialog";
 import { MONTHS } from "@/components/workbench/primitives";
 import type { Client } from "@/lib/clients";
@@ -46,8 +47,9 @@ export function ClientSidebar({
         <span className="text-sm font-semibold tracking-tight">Weather Cover</span>
       </div>
 
-      <div className="p-3">
+      <div className="space-y-1 p-3">
         <NewClientDialog onCreated={onCreated} />
+        <CoverageDialog />
       </div>
       <Separator />
 

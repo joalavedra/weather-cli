@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CoverProfileChart } from "@/components/charts/cover-profile-chart";
 import { Note, Stat, pct, usd } from "@/components/workbench/primitives";
+import { formatTemp, useUnits } from "@/lib/units";
 import type { CoverOption, CoverResult } from "@/lib/analysis";
 import { cn } from "@/lib/utils";
 
@@ -74,7 +75,7 @@ export function CoverCard({
   loading: boolean;
   error: string | null;
 }) {
-  const unitLabel = result?.curve.unit === "F" ? "°F" : "";
+  const units = useUnits();
 
   return (
     <Card>
@@ -82,7 +83,8 @@ export function CoverCard({
         <CardTitle>The cover</CardTitle>
         <CardDescription>
           Each rung is sized to the loss expected on the days it pays, so the premium falls out
-          of the loss rather than being a budget you pick.
+          of the loss rather than being a budget you pick. Bucket labels are the contract&apos;s
+          own wording and stay in Fahrenheit.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -123,7 +125,7 @@ export function CoverCard({
               <Stat label="Cover limit" value={usd(Math.round(result.plan.limitUsdc))} hint="worst bucket" />
               <Stat
                 label="Attaches"
-                value={`${result.plan.direction === "below" ? "↓" : "↑"} ${result.plan.attachment}${unitLabel}`}
+                value={`${result.plan.direction === "below" ? "↓" : "↑"} ${formatTemp(result.plan.attachment, units)}`}
               />
               <Stat
                 label="Worst day carried"
@@ -145,7 +147,17 @@ export function CoverCard({
               <TableBody>
                 {result.plan.legs.map((leg) => (
                   <TableRow key={leg.label}>
-                    <TableCell className="font-medium">{leg.label}</TableCell>
+                    <TableCell className="font-medium">
+                      {leg.label}
+                      {units === "metric" && leg.strike.unit === "F" ? (
+                        <span className="text-muted-foreground ml-1.5 text-xs font-normal">
+                          ({leg.strike.cap !== null
+                            ? `≤ ${formatTemp(leg.strike.cap, units, 0)}`
+                            : `≥ ${formatTemp(leg.strike.floor ?? 0, units, 0)}`}
+                          )
+                        </span>
+                      ) : null}
+                    </TableCell>
                     <TableCell className="tnum text-right">{leg.contracts.toLocaleString()}</TableCell>
                     <TableCell className="tnum text-right">
                       {Math.round(leg.pricePerContract * 100)}¢
@@ -160,7 +172,7 @@ export function CoverCard({
               <CoverProfileChart
                 profile={result.profile}
                 attachment={result.plan.attachment}
-                unitLabel={unitLabel}
+                unit={result.curve.unit}
               />
               <Note>
                 A structure that works flattens the green line. The steps are the honest limit of

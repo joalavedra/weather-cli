@@ -1,7 +1,9 @@
 "use client";
 
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, XAxis, YAxis } from "recharts";
+import type { StrikeUnit } from "@weather/core";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { measureUnitLabel, tempValue, useUnits } from "@/lib/units";
 import type { ChartConfig } from "@/components/ui/chart";
 
 const config = {
@@ -21,14 +23,17 @@ const config = {
 export function CoverProfileChart({
   profile,
   attachment,
-  unitLabel,
+  unit,
 }: {
   profile: Array<{ value: number; lossUsdc: number; payoutUsdc: number; netUsdc: number }>;
   attachment: number;
-  unitLabel: string;
+  unit: StrikeUnit;
 }) {
+  const units = useUnits();
+  const unitLabel = measureUnitLabel(unit, units);
+  const convert = (v: number) => (unit === "F" ? tempValue(v, units) : v);
   const data = profile.map((row) => ({
-    value: row.value,
+    value: convert(row.value),
     loss: -row.lossUsdc,
     payout: row.payoutUsdc,
     net: row.netUsdc,
@@ -43,7 +48,7 @@ export function CoverProfileChart({
           tickLine={false}
           axisLine={false}
           tickMargin={8}
-          tickFormatter={(v: number) => `${v}${unitLabel}`}
+          tickFormatter={(v: number) => `${Math.round(v)}${unitLabel}`}
         />
         <YAxis
           tickLine={false}
@@ -65,7 +70,7 @@ export function CoverProfileChart({
         />
         <ReferenceLine y={0} stroke="var(--border)" />
         <ReferenceLine
-          x={attachment}
+          x={convert(attachment)}
           stroke="var(--chart-5)"
           strokeDasharray="4 4"
           label={{ value: "attaches", position: "top", fill: "var(--chart-5)", fontSize: 11 }}
