@@ -46,7 +46,7 @@ function LadderPicker({
                 onClick={() => onPick(event.eventTicker)}
                 className="h-7 text-xs font-normal"
               >
-                {event.eventTicker.split("-").slice(1).join("-")}
+                {event.label}
               </Button>
             ))}
           </div>

@@ -442,7 +442,21 @@ export interface CoverOption {
   settlementSource: string | null;
   /** Kilometres from the business to the series' settlement location. */
   distanceKm: number | null;
-  events: Array<{ eventTicker: string; title: string }>;
+  events: Array<{ eventTicker: string; title: string; label: string }>;
+}
+
+/**
+ * A short, readable name for one measurement period.
+ *
+ * The two venues name events completely differently — KXHIGHCHI-26AUG02 against
+ * highest-temperature-in-london-on-august-3-2026 — and chopping the Kalshi
+ * ticker at its first dash turned the Polymarket slug into a button reading
+ * "temperature-in-london-on-august-3-2026".
+ */
+function eventLabel(venue: string, id: string, title: string): string {
+  if (venue === "kalshi") return id.split("-").slice(1).join("-") || id;
+  const date = /\bon ([A-Z][a-z]+ \d{1,2})/.exec(title)?.[1];
+  return date ?? title.slice(0, 24);
 }
 
 /**
@@ -605,6 +619,7 @@ export async function findCoverOptions(client: Client): Promise<CoverOption[]> {
       events: (await kalshi.listEvents(c.series.ticker, 6).catch(() => [])).map((e) => ({
         eventTicker: qualifyLadderId("kalshi", e.eventTicker),
         title: e.title,
+        label: eventLabel("kalshi", e.eventTicker, e.title),
       })),
     })),
   );
@@ -644,6 +659,7 @@ export async function findCoverOptions(client: Client): Promise<CoverOption[]> {
         {
           eventTicker: qualifyLadderId("polymarket", m.ladder.eventTicker),
           title: m.ladder.title,
+          label: eventLabel("polymarket", m.ladder.eventTicker, m.ladder.title),
         },
       ],
     }));

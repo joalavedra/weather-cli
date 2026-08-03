@@ -52,18 +52,28 @@ export function isMeasurable(peril: Peril): boolean {
   return peril in PERIL_VARIABLE;
 }
 
+/** Open-Meteo throttles per minute; a sweep across many cities will hit it. */
+const RATE_LIMIT_ATTEMPTS = 4;
+const RATE_LIMIT_BACKOFF_MS = 4000;
+
 async function getJson(url: URL): Promise<unknown> {
-  const response = await fetch(url, {
-    headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  if (!response.ok) {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(url, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (response.ok) return (await response.json()) as unknown;
+
     const body = await response.text().catch(() => "");
-    throw new Error(
-      `Open-Meteo GET ${url.pathname} failed (${response.status}): ${body.slice(0, 200)}`,
-    );
+    const throttled = response.status === 429;
+    if (!throttled || attempt >= RATE_LIMIT_ATTEMPTS - 1) {
+      throw new Error(
+        `Open-Meteo GET ${url.pathname} failed (${response.status}): ${body.slice(0, 200)}`,
+      );
+    }
+    // Their limit is per minute, so back off in seconds rather than retrying hot.
+    await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_BACKOFF_MS * 2 ** attempt));
   }
-  return (await response.json()) as unknown;
 }
 
 const GeocodeResponse = z

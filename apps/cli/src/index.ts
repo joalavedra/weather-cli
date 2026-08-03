@@ -17,6 +17,8 @@ import {
   measureGeographicBasis,
   parseRevenueCsv,
   quoteFromMarket,
+  runBasisStudy,
+  summarize,
   coverProfile,
   selectLossRungs,
   sizeLegsFromHistory,
@@ -660,6 +662,61 @@ program
       for (const warning of plan.warnings) process.stdout.write(`  ! ${warning}\n`);
     },
   );
+
+program
+  .command("basis-study")
+  .description("Measure how well cover tracks a business in every city with a live ladder.")
+  .option("--percentile <n>", "where the loss starts, as a local temperature percentile", "25")
+  .option("--start <date>", "history start (YYYY-MM-DD)", "2022-01-01")
+  .option("--end <date>", "history end (YYYY-MM-DD)", "2025-12-31")
+  .action(async (opts: { percentile: string; start: string; end: string }) => {
+    const result = await runBasisStudy({
+      percentile: Number.parseInt(opts.percentile, 10),
+      start: opts.start,
+      end: opts.end,
+    });
+    if (isJson()) return emitJson(result);
+
+    const ranked = result.cases
+      .filter((c) => c.distinguishable)
+      .toSorted(
+      (a, b) => b.measurement.triggerCorrelation - a.measurement.triggerCorrelation,
+    );
+    process.stdout.write(
+      `${"CITY".padEnd(20)} ${"VENUE".padEnd(11)} ${"GAP".padStart(6)}  ${"PAID".padStart(6)}  ${"MISS".padStart(6)}  STATION\n`,
+    );
+    for (const c of ranked) {
+      const m = c.measurement;
+      const unit = c.scale === "C" ? "°C" : "°F";
+      process.stdout.write(
+        `${c.city.slice(0, 19).padEnd(20)} ${c.venue.padEnd(11)} ${`${c.distanceKm}km`.padStart(6)}  ` +
+          `${`${(m.triggerCorrelation * 100).toFixed(0)}%`.padStart(6)}  ` +
+          `${`${m.meanAbsDifference.toFixed(1)}${unit}`.padStart(6)}  ${c.station.slice(0, 34)}\n`,
+      );
+    }
+
+    const s = summarize(result.cases);
+    process.stdout.write(`\nCities measured:       ${s.n}\n`);
+    process.stdout.write(`Median paid-when-hurt: ${(s.median * 100).toFixed(0)}%\n`);
+    process.stdout.write(`Tight (>=85%):         ${(s.shareTight * 100).toFixed(0)}% of cities\n`);
+    process.stdout.write(`Loose (<70%):          ${(s.shareLoose * 100).toFixed(0)}% of cities\n`);
+    process.stdout.write(`Median station gap:    ${s.medianDistanceKm}km\n`);
+    process.stdout.write(
+      `Excluded:              ${s.indistinguishable} city/venue pairs the ~10km weather grid cannot separate\n`,
+    );
+    process.stdout.write(
+      "\nRead these as an upper bound. Both series come from gridded reanalysis, which\n" +
+        "smooths the very microclimates that create basis risk — a lakefront, a hillside,\n" +
+        "a dense urban core. Premises are the city centre; a business sitting in one of\n" +
+        "those pockets will do worse than its city's figure here.\n",
+    );
+    if (result.skipped.length > 0) {
+      process.stdout.write(`\nSkipped ${result.skipped.length}:\n`);
+      for (const sk of result.skipped.slice(0, 8)) {
+        process.stdout.write(`  ${sk.city} (${sk.venue}) — ${sk.reason}\n`);
+      }
+    }
+  });
 
 program
   .command("hedge")
