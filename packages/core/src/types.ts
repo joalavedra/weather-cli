@@ -59,21 +59,6 @@ export interface Settlement {
   rules: string | null;
 }
 
-/** Venue-specific identifiers needed to place an order. */
-export type Execution =
-  | {
-      venue: "polymarket";
-      clobTokenIds: string[];
-      conditionId: string | null;
-      negRisk: boolean;
-    }
-  | {
-      venue: "kalshi";
-      ticker: string;
-      eventTicker: string;
-      seriesTicker: string;
-    };
-
 /** Best bid and ask on both sides, in dollars per contract. */
 export interface Quotes {
   yesBid: number;
@@ -111,7 +96,7 @@ export interface Market {
   location: string | null;
   strike: Strike | null;
   settlement: Settlement;
-  execution: Execution;
+  /** Link to the contract on its venue, for placing the order there. */
   url: string;
 }
 
@@ -162,13 +147,13 @@ export interface CoverQuote {
   /** Price of one contract on the side bought, 0–1. */
   pricePerContract: number;
   /** What the client pays. */
-  premiumUsdc: number;
+  premiumUsd: number;
   contracts: number;
   /** Most this position can pay — the cover limit. */
-  limitUsdc: number;
+  limitUsd: number;
   /** Limit less premium: what actually lands if it triggers. */
-  netIfTriggeredUsdc: number;
-  exposureUsdc: number | null;
+  netIfTriggeredUsd: number;
+  exposureUsd: number | null;
   /** Limit ÷ exposure. Above 1 the position pays more than the loss. */
   coverageRatio: number | null;
 }

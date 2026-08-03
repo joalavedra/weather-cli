@@ -7,14 +7,14 @@ import {
 } from "./basis.js";
 import type { CoverQuote } from "./types.js";
 
-function quote(limitUsdc: number): CoverQuote {
+function quote(limitUsd: number): CoverQuote {
   return {
     pricePerContract: 0.5,
-    premiumUsdc: limitUsdc / 2,
-    contracts: limitUsdc,
-    limitUsdc,
-    netIfTriggeredUsdc: limitUsdc / 2,
-    exposureUsdc: null,
+    premiumUsd: limitUsd / 2,
+    contracts: limitUsd,
+    limitUsd,
+    netIfTriggeredUsd: limitUsd / 2,
+    exposureUsd: null,
     coverageRatio: null,
   };
 }
@@ -24,7 +24,7 @@ function inputs(over: Partial<BasisInputs> = {}): BasisInputs {
     quote: quote(10_000),
     loss: {
       lossEvent: "warehouse road freezes",
-      exposureValueUsdc: 10_000,
+      exposureValueUsd: 10_000,
       windowStart: "2026-01-01",
       windowEnd: "2026-01-31",
     },
@@ -48,9 +48,9 @@ describe("computeBasisRisk", () => {
   it("isolates basis-risk dollars from residual dollars", () => {
     const a = computeBasisRisk(inputs({ triggerCorrelation: 0.7 }));
     // basis risk is purely the trigger mismatch: 10k × (1 − 0.7)
-    expect(a.basisRiskUsdc).toBeCloseTo(3_000);
+    expect(a.basisRiskUsd).toBeCloseTo(3_000);
     // residual also folds in tenor/coverage; here both are perfect so they match
-    expect(a.residualRiskUsdc).toBeCloseTo(3_000);
+    expect(a.residualRiskUsd).toBeCloseTo(3_000);
   });
 
   it("separates residual from basis when payout is short", () => {
@@ -58,9 +58,9 @@ describe("computeBasisRisk", () => {
       ...inputs({ triggerCorrelation: 1 }),
       quote: quote(5_000),
     });
-    expect(a.basisRiskUsdc).toBe(0);
+    expect(a.basisRiskUsd).toBe(0);
     expect(a.payoutCoverage).toBe(0.5);
-    expect(a.residualRiskUsdc).toBeCloseTo(5_000);
+    expect(a.residualRiskUsd).toBeCloseTo(5_000);
     expect(a.warnings).toContainEqual(expect.stringContaining("Underfunded"));
   });
 
@@ -108,13 +108,13 @@ describe("computeBasisRisk", () => {
         inputs({
           loss: {
             lossEvent: "x",
-            exposureValueUsdc: 0,
+            exposureValueUsd: 0,
             windowStart: "2026-01-01",
             windowEnd: "2026-01-31",
           },
         }),
       ),
-    ).toThrow(/exposureValueUsdc/);
+    ).toThrow(/exposureValueUsd/);
   });
 
   it("rejects an unparseable window date", () => {
@@ -123,7 +123,7 @@ describe("computeBasisRisk", () => {
         inputs({
           loss: {
             lossEvent: "x",
-            exposureValueUsdc: 10_000,
+            exposureValueUsd: 10_000,
             windowStart: "not-a-date",
             windowEnd: "2026-01-31",
           },
@@ -138,7 +138,7 @@ function leg(over: Partial<BasketLeg> = {}): BasketLeg {
     marketId: "m1",
     question: "Newark temp < 20F",
     side: "Yes",
-    priceUsdc: 0.5,
+    priceUsd: 0.5,
     triggerCorrelation: 0.6,
     correlationRationale: "proxy for the road",
     ...over,
@@ -156,9 +156,9 @@ describe("composeBasket", () => {
     );
     const a = plan.allocations.find((x) => x.leg.marketId === "a");
     const b = plan.allocations.find((x) => x.leg.marketId === "b");
-    expect(a?.budgetUsdc).toBeCloseTo(800);
-    expect(b?.budgetUsdc).toBeCloseTo(400);
-    const total = plan.allocations.reduce((s, x) => s + x.budgetUsdc, 0);
+    expect(a?.budgetUsd).toBeCloseTo(800);
+    expect(b?.budgetUsd).toBeCloseTo(400);
+    const total = plan.allocations.reduce((s, x) => s + x.budgetUsd, 0);
     expect(total).toBeCloseTo(1_200);
   });
 
@@ -190,20 +190,20 @@ describe("composeBasket", () => {
     // one leg at price 0.5, $500 → 1000 payout → coverage 1.0
     expect(plan.combinedCoverageRatio).toBeCloseTo(1);
     expect(plan.effectivenessScore).toBeCloseTo(0.8);
-    expect(plan.residualRiskUsdc).toBeCloseTo(200);
+    expect(plan.residualRiskUsd).toBeCloseTo(200);
   });
 
   it("leaves effectiveness null when no exposure is given", () => {
     const plan = composeBasket([leg()], 500);
     expect(plan.effectivenessScore).toBeNull();
-    expect(plan.residualRiskUsdc).toBeNull();
+    expect(plan.residualRiskUsd).toBeNull();
   });
 
   it("warns when a leg's allocation falls below its order minimum", () => {
     const plan = composeBasket(
       [
-        leg({ marketId: "a", triggerCorrelation: 0.95, orderMinSizeUsdc: 10 }),
-        leg({ marketId: "b", triggerCorrelation: 0.05, orderMinSizeUsdc: 10 }),
+        leg({ marketId: "a", triggerCorrelation: 0.95, orderMinSizeUsd: 10 }),
+        leg({ marketId: "b", triggerCorrelation: 0.05, orderMinSizeUsd: 10 }),
       ],
       100,
     );
@@ -216,7 +216,7 @@ describe("composeBasket", () => {
   });
 
   it("rejects a leg priced outside (0, 1)", () => {
-    expect(() => composeBasket([leg({ priceUsdc: 1 })], 500)).toThrow(/price/);
+    expect(() => composeBasket([leg({ priceUsd: 1 })], 500)).toThrow(/price/);
   });
 
   it("rejects when every leg has zero correlation", () => {

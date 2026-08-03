@@ -128,14 +128,14 @@ function printQuote(quote: CoverQuote): void {
   if (isJson()) return emitJson(quote);
   const lines = [
     `Contract price:   ${(quote.pricePerContract * 100).toFixed(1)}¢`,
-    `Premium:          $${quote.premiumUsdc.toFixed(2)}`,
+    `Premium:          $${quote.premiumUsd.toFixed(2)}`,
     `Contracts:        ${quote.contracts.toFixed(2)}`,
-    `Cover limit:      $${quote.limitUsdc.toFixed(2)}`,
-    `Net if triggered: +$${quote.netIfTriggeredUsdc.toFixed(2)} after premium`,
+    `Cover limit:      $${quote.limitUsd.toFixed(2)}`,
+    `Net if triggered: +$${quote.netIfTriggeredUsd.toFixed(2)} after premium`,
   ];
-  if (quote.exposureUsdc !== null && quote.coverageRatio !== null) {
+  if (quote.exposureUsd !== null && quote.coverageRatio !== null) {
     lines.push(
-      `Exposure:         $${quote.exposureUsdc.toFixed(2)}`,
+      `Exposure:         $${quote.exposureUsd.toFixed(2)}`,
       `Coverage:         ${(quote.coverageRatio * 100).toFixed(1)}% of exposure`,
     );
   }
@@ -150,8 +150,8 @@ function printBasis(basis: BasisAssessment): void {
     `Trigger corr.:    ${(basis.triggerCorrelation * 100).toFixed(0)}%  (${basis.correlationRationale})`,
     `Tenor fit:        ${(basis.tenorAlignment * 100).toFixed(0)}%`,
     `Payout coverage:  ${(basis.payoutCoverage * 100).toFixed(0)}%`,
-    `Residual risk:    $${basis.residualRiskUsdc.toFixed(2)} still exposed`,
-    `Basis risk:       $${basis.basisRiskUsdc.toFixed(2)} from trigger mismatch`,
+    `Residual risk:    $${basis.residualRiskUsd.toFixed(2)} still exposed`,
+    `Basis risk:       $${basis.basisRiskUsd.toFixed(2)} from trigger mismatch`,
   ];
   for (const w of basis.warnings) lines.push(`  ! ${w}`);
   process.stdout.write(`${lines.join("\n")}\n`);
@@ -318,7 +318,7 @@ program
         quote,
         loss: {
           lossEvent: opts.loss,
-          exposureValueUsdc: exposure,
+          exposureValueUsd: exposure,
           windowStart: opts.windowStart,
           windowEnd: opts.windowEnd,
         },
@@ -634,9 +634,9 @@ program
       process.stdout.write(`Settles at:       ${ladder.settlement.station}\n`);
       process.stdout.write(`Premises:         ${premises.name ?? opts.premises}\n\n`);
       process.stdout.write(`Attaches:         ${plan.direction} ${plan.attachment}${unit}\n`);
-      process.stdout.write(`Premium:          $${plan.premiumPerDayUsdc.toFixed(2)} per day of cover\n`);
-      process.stdout.write(`Cover limit:      $${Math.round(plan.limitUsdc).toLocaleString()} on the worst bucket\n`);
-      process.stdout.write(`Worst day seen:   -$${Math.round(plan.worstDayLossUsdc).toLocaleString()}, of which cover carries ${(plan.worstDayCovered * 100).toFixed(0)}%\n\n`);
+      process.stdout.write(`Premium:          $${plan.premiumPerDayUsd.toFixed(2)} per day of cover\n`);
+      process.stdout.write(`Cover limit:      $${Math.round(plan.limitUsd).toLocaleString()} on the worst bucket\n`);
+      process.stdout.write(`Worst day seen:   -$${Math.round(plan.worstDayLossUsd).toLocaleString()}, of which cover carries ${(plan.worstDayCovered * 100).toFixed(0)}%\n\n`);
       for (const leg of plan.legs) {
         process.stdout.write(
           `  ${leg.label.padEnd(18)} ${String(leg.contracts).padStart(6)} contracts @ ${(leg.pricePerContract * 100).toFixed(0)}¢\n`,
@@ -650,7 +650,7 @@ program
       process.stdout.write(`\n  ${unit || "value"}   loss      payout     net\n`);
       for (const row of coverProfile(plan, curve, values.toSorted((a, b) => a - b))) {
         process.stdout.write(
-          `  ${String(row.value).padStart(4)}  -$${Math.round(row.lossUsdc).toString().padStart(6)}  +$${Math.round(row.payoutUsdc).toString().padStart(6)}  $${Math.round(row.netUsdc).toString().padStart(7)}\n`,
+          `  ${String(row.value).padStart(4)}  -$${Math.round(row.lossUsd).toString().padStart(6)}  +$${Math.round(row.payoutUsd).toString().padStart(6)}  $${Math.round(row.netUsd).toString().padStart(7)}\n`,
         );
       }
 
@@ -671,8 +671,8 @@ program
     printQuote(
       priceCover({
         pricePerContract: Number.parseFloat(opts.price),
-        premiumUsdc: Number.parseFloat(opts.budget),
-        ...(opts.exposure ? { exposureUsdc: Number.parseFloat(opts.exposure) } : {}),
+        premiumUsd: Number.parseFloat(opts.budget),
+        ...(opts.exposure ? { exposureUsd: Number.parseFloat(opts.exposure) } : {}),
       }),
     );
   });

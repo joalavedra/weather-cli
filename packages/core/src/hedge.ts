@@ -4,9 +4,9 @@ export interface PriceCoverArgs {
   /** Price of one contract on the side being bought, 0–1 exclusive. */
   pricePerContract: number;
   /** Premium the client will pay. */
-  premiumUsdc: number;
+  premiumUsd: number;
   /** Dollars at risk if the loss happens. Enables the exposure invariant. */
-  exposureUsdc?: number;
+  exposureUsd?: number;
 }
 
 /**
@@ -27,14 +27,14 @@ const EXPOSURE_TOLERANCE = 1.05;
  * of is not a rule.
  */
 function assertWithinExposure(
-  limitUsdc: number,
-  exposureUsdc: number,
+  limitUsd: number,
+  exposureUsd: number,
   pricePerContract: number,
 ): void {
-  if (limitUsdc <= exposureUsdc * EXPOSURE_TOLERANCE) return;
-  const maxPremium = exposureUsdc * pricePerContract;
+  if (limitUsd <= exposureUsd * EXPOSURE_TOLERANCE) return;
+  const maxPremium = exposureUsd * pricePerContract;
   throw new Error(
-    `this position would pay $${limitUsdc.toFixed(2)} against $${exposureUsdc.toFixed(2)} of exposure, ` +
+    `this position would pay $${limitUsd.toFixed(2)} against $${exposureUsd.toFixed(2)} of exposure, ` +
       `which is a bet rather than cover. Cap the premium at $${maxPremium.toFixed(2)} to cover the exposure exactly.`,
   );
 }
@@ -48,42 +48,42 @@ function assertWithinExposure(
  * a -100% ROI invites a client to judge cover the way they would judge a bet.
  */
 export function priceCover(args: PriceCoverArgs): CoverQuote {
-  const { pricePerContract, premiumUsdc, exposureUsdc } = args;
+  const { pricePerContract, premiumUsd, exposureUsd } = args;
   if (pricePerContract <= 0 || pricePerContract >= 1) {
     throw new Error(
       `pricePerContract must be between 0 and 1 exclusive, got ${pricePerContract} — a contract at 0 or 1 has no live market`,
     );
   }
-  if (premiumUsdc <= 0) {
-    throw new Error(`premiumUsdc must be positive, got ${premiumUsdc}`);
+  if (premiumUsd <= 0) {
+    throw new Error(`premiumUsd must be positive, got ${premiumUsd}`);
   }
-  const contracts = premiumUsdc / pricePerContract;
-  const limitUsdc = contracts;
-  if (exposureUsdc !== undefined && exposureUsdc > 0) {
-    assertWithinExposure(limitUsdc, exposureUsdc, pricePerContract);
+  const contracts = premiumUsd / pricePerContract;
+  const limitUsd = contracts;
+  if (exposureUsd !== undefined && exposureUsd > 0) {
+    assertWithinExposure(limitUsd, exposureUsd, pricePerContract);
   }
   return {
     pricePerContract,
-    premiumUsdc,
+    premiumUsd,
     contracts,
-    limitUsdc,
-    netIfTriggeredUsdc: limitUsdc - premiumUsdc,
-    exposureUsdc: exposureUsdc ?? null,
+    limitUsd,
+    netIfTriggeredUsd: limitUsd - premiumUsd,
+    exposureUsd: exposureUsd ?? null,
     coverageRatio:
-      exposureUsdc !== undefined && exposureUsdc > 0 ? limitUsdc / exposureUsdc : null,
+      exposureUsd !== undefined && exposureUsd > 0 ? limitUsd / exposureUsd : null,
   };
 }
 
 /** The largest premium that still keeps the payout inside stated exposure. */
-export function maxPremiumForExposure(pricePerContract: number, exposureUsdc: number): number {
-  return exposureUsdc * pricePerContract;
+export function maxPremiumForExposure(pricePerContract: number, exposureUsd: number): number {
+  return exposureUsd * pricePerContract;
 }
 
 export function quoteFromMarket(
   market: Market,
   side: "Yes" | "No",
-  premiumUsdc: number,
-  exposureUsdc?: number,
+  premiumUsd: number,
+  exposureUsd?: number,
 ): CoverQuote {
   const index = market.outcomes.findIndex((o) => o.toLowerCase() === side.toLowerCase());
   if (index === -1) {
@@ -97,7 +97,7 @@ export function quoteFromMarket(
   }
   return priceCover({
     pricePerContract: price,
-    premiumUsdc,
-    ...(exposureUsdc !== undefined && { exposureUsdc }),
+    premiumUsd,
+    ...(exposureUsd !== undefined && { exposureUsd }),
   });
 }

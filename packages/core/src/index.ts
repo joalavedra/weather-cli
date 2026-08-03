@@ -9,7 +9,6 @@ export * from "./venue.js";
 export * from "./hedge.js";
 export * from "./basis.js";
 export * from "./elicit.js";
-export * from "./trading.js";
 
 /**
  * Venue adapters are namespaced rather than flattened: both expose `getMarket`,

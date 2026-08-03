@@ -12,16 +12,11 @@ import {
   estimateTriggerCorrelation,
   fitLossCurve,
   solveCover,
-  createWallet,
   geocode,
-  getPositions,
   measureGeographicBasis,
   getVenue,
-  getWalletStatus,
   kalshi,
-  placeMarketOrder,
   quoteFromMarket,
-  runApprovals,
 } from "@weather/core";
 import type { BasketLeg, GeoPoint, Market, Peril } from "@weather/core";
 import { loadDataset } from "@/lib/datasets";
@@ -194,8 +189,8 @@ export const computeHedgeQuoteTool = tool({
       .describe(
         "Which outcome to BUY. Buy YES if the trigger you want to hedge against would resolve YES.",
       ),
-    budgetUsdc: z.number().positive().describe("USDC the user will spend."),
-    exposureValueUsdc: z
+    budgetUsd: z.number().positive().describe("USDC the user will spend."),
+    exposureValueUsd: z
       .number()
       .positive()
       .optional()
@@ -203,9 +198,9 @@ export const computeHedgeQuoteTool = tool({
         "Dollars at risk if the loss happens. Supplying it enables the exposure invariant: a position whose payout would exceed the loss it protects is rejected as a bet rather than cover.",
       ),
   }),
-  execute: async ({ id, side, budgetUsdc, exposureValueUsdc }) => {
+  execute: async ({ id, side, budgetUsd, exposureValueUsd }) => {
     const market = await fetchMarket(id);
-    const quote = quoteFromMarket(market, side, budgetUsdc, exposureValueUsdc);
+    const quote = quoteFromMarket(market, side, budgetUsd, exposureValueUsd);
     return {
       market: summarizeMarket(market),
       side,
@@ -342,9 +337,9 @@ export const solveCoverTool = tool({
     return {
       settlesAt: ladder.settlement.station,
       attachesAt: `${plan.direction} ${plan.attachment}${plan.unit === "F" ? "°F" : ""}`,
-      premiumPerDayUsdc: Number(plan.premiumPerDayUsdc.toFixed(2)),
-      limitUsdc: Math.round(plan.limitUsdc),
-      worstDayLossUsdc: Math.round(plan.worstDayLossUsdc),
+      premiumPerDayUsd: Number(plan.premiumPerDayUsd.toFixed(2)),
+      limitUsd: Math.round(plan.limitUsd),
+      worstDayLossUsd: Math.round(plan.worstDayLossUsd),
       worstDayCoveredPct: Math.round(plan.worstDayCovered * 100),
       legs: plan.legs.map((l) => ({
         bucket: l.label,
@@ -353,9 +348,9 @@ export const solveCoverTool = tool({
       })),
       profile: coverProfile(plan, curve, probes).map((row) => ({
         value: row.value,
-        lossUsdc: Math.round(row.lossUsdc),
-        payoutUsdc: Math.round(row.payoutUsdc),
-        netUsdc: Math.round(row.netUsdc),
+        lossUsd: Math.round(row.lossUsd),
+        payoutUsd: Math.round(row.payoutUsd),
+        netUsd: Math.round(row.netUsd),
       })),
       replay: {
         days: plan.replay.days,
@@ -418,8 +413,8 @@ export const assessBasisRiskTool = tool({
   inputSchema: z.object({
     id: z.string().describe("The contract id to assess."),
     side: z.enum(["Yes", "No"]).describe("Which outcome to BUY."),
-    budgetUsdc: z.number().positive().describe("USDC the client will spend."),
-    exposureValueUsdc: z
+    budgetUsd: z.number().positive().describe("USDC the client will spend."),
+    exposureValueUsd: z
       .number()
       .positive()
       .describe("Dollars at risk if the real loss event happens."),
@@ -446,8 +441,8 @@ export const assessBasisRiskTool = tool({
   execute: async ({
     id,
     side,
-    budgetUsdc,
-    exposureValueUsdc,
+    budgetUsd,
+    exposureValueUsd,
     lossEvent,
     windowStart,
     windowEnd,
@@ -455,10 +450,10 @@ export const assessBasisRiskTool = tool({
     correlationRationale,
   }) => {
     const market = await fetchMarket(id);
-    const quote = quoteFromMarket(market, side, budgetUsdc, exposureValueUsdc);
+    const quote = quoteFromMarket(market, side, budgetUsd, exposureValueUsd);
     const basis = computeBasisRisk({
       quote,
-      loss: { lossEvent, exposureValueUsdc, windowStart, windowEnd },
+      loss: { lossEvent, exposureValueUsd, windowStart, windowEnd },
       marketEndDate: market.endDate,
       triggerCorrelation,
       correlationRationale,
@@ -476,11 +471,11 @@ export const composeBasketTool = tool({
   description:
     "When no single market tracks the client's loss well (a loose basis-risk verdict), spread the budget across 2–4 proxy markets that miss in different ways, to cover more of the real loss than any one market can. Budget is weighted toward the better-correlated legs. Each leg needs its own triggerCorrelation estimate and rationale. Combined coverage assumes the legs' misses are independent and is capped below 1 — surface that caveat to the client. Fetches live prices for each market.",
   inputSchema: z.object({
-    totalBudgetUsdc: z
+    totalBudgetUsd: z
       .number()
       .positive()
       .describe("Total USDC to spread across the basket."),
-    exposureValueUsdc: z
+    exposureValueUsd: z
       .number()
       .positive()
       .optional()
@@ -504,7 +499,7 @@ export const composeBasketTool = tool({
       .max(4)
       .describe("2–4 proxy legs that fail in different ways."),
   }),
-  execute: async ({ totalBudgetUsdc, exposureValueUsdc, legs }) => {
+  execute: async ({ totalBudgetUsd, exposureValueUsd, legs }) => {
     const resolved: BasketLeg[] = await Promise.all(
       legs.map(async (l): Promise<BasketLeg> => {
         const market = await fetchMarket(l.id);
@@ -521,15 +516,15 @@ export const composeBasketTool = tool({
           marketId: market.id,
           question: market.question,
           side: l.side,
-          priceUsdc: price,
+          priceUsd: price,
           triggerCorrelation: l.triggerCorrelation,
           correlationRationale: l.correlationRationale,
-          orderMinSizeUsdc: market.orderMinSize,
+          orderMinSizeUsd: market.orderMinSize,
         };
       }),
     );
     return {
-      plan: composeBasket(resolved, totalBudgetUsdc, exposureValueUsdc),
+      plan: composeBasket(resolved, totalBudgetUsd, exposureValueUsd),
     };
   },
 });
@@ -539,106 +534,17 @@ export const whatIfTool = tool({
     "Compute a quote from raw inputs without fetching a market. Useful for what-if scenarios.",
   inputSchema: z.object({
     pricePerContract: z.number().min(0.001).max(0.999),
-    premiumUsdc: z.number().positive(),
-    exposureUsdc: z.number().positive().optional(),
+    premiumUsd: z.number().positive(),
+    exposureUsd: z.number().positive().optional(),
   }),
-  execute: ({ pricePerContract, premiumUsdc, exposureUsdc }) => {
+  execute: ({ pricePerContract, premiumUsd, exposureUsd }) => {
     return {
       quote: priceCover({
         pricePerContract,
-        premiumUsdc,
-        ...(exposureUsdc !== undefined && { exposureUsdc }),
+        premiumUsd,
+        ...(exposureUsd !== undefined && { exposureUsd }),
       }),
     };
-  },
-});
-
-export const walletStatusTool = tool({
-  description:
-    "Check the broker's Polymarket trading wallet: whether it's configured, address, USDC balance in cents, on-chain approvals state, and geoblock status. Always call this first before discussing trade execution. If `configured` is false, call `setup_wallet`. If approvals are not ready, call `run_approvals` after the user has funded MATIC.",
-  inputSchema: z.object({}),
-  execute: async () => {
-    const status = await getWalletStatus();
-    return {
-      configured: status.configured,
-      address: status.address,
-      proxyAddress: status.proxyAddress,
-      signatureType: status.signatureType,
-      usdcBalanceUsd:
-        status.usdcBalanceCents !== null
-          ? status.usdcBalanceCents / 100
-          : null,
-      approvalsReady: status.approvalsReady,
-      geoblocked: status.geoblocked,
-    };
-  },
-});
-
-export const setupWalletTool = tool({
-  description:
-    "Generate a brand-new Polymarket trading wallet (random private key, saved locally to ~/.config/polymarket/config.json). Only call this when wallet_status returns configured=false AND the user has explicitly asked you to create a wallet. Returns the new wallet address. After this, the user must fund the address with USDC + a small amount of MATIC on Polygon before approvals or trades will work.",
-  inputSchema: z.object({}),
-  execute: async () => {
-    const result = await createWallet();
-    return {
-      address: result.address,
-      message:
-        "Wallet created. Send USDC and a small amount of MATIC (for gas) to this address on Polygon, then ask me to run approvals.",
-    };
-  },
-});
-
-export const runApprovalsTool = tool({
-  description:
-    "Send the on-chain approval transactions Polymarket needs before trading (USDC + CTF token approvals). Sends ~6 transactions on Polygon and requires MATIC for gas. Only call after wallet_status confirms the wallet is configured and the user confirms they have MATIC + want to proceed. Takes up to a few minutes.",
-  inputSchema: z.object({}),
-  execute: async () => {
-    await runApprovals();
-    return { ok: true, message: "Approvals submitted." };
-  },
-});
-
-export const placeOrderTool = tool({
-  description:
-    "Buy cover on a Polymarket contract using the configured wallet. Only call after the user has explicitly confirmed in chat — never place orders speculatively. Execution is Polymarket-only today: Kalshi contracts are discoverable and priceable but not yet bindable, and this tool will refuse them rather than route an order to the wrong venue. Returns the order ID and fill status.",
-  inputSchema: z.object({
-    id: z.string().describe("The contract id to buy."),
-    amountUsdc: z.number().positive().describe("USDC premium to spend."),
-    side: z.enum(["Yes", "No"]).describe("Which side is being bought."),
-  }),
-  execute: async ({ id, amountUsdc, side }) => {
-    const market = await fetchMarket(id);
-    if (market.execution.venue !== "polymarket") {
-      throw new Error(
-        `Cannot place this order: ${id} trades on ${market.venue}, and only Polymarket execution is wired up. ` +
-          `Kalshi order placement needs an API key with RSA request signing. Quote and basis-score it here, then place it on Kalshi directly.`,
-      );
-    }
-    const tokenId = market.execution.clobTokenIds[side === "Yes" ? 0 : 1];
-    if (tokenId === undefined) {
-      throw new Error(`contract ${id} has no ${side} token to buy`);
-    }
-    const result = await placeMarketOrder({ tokenId, side: "buy", amountUsdc });
-    return {
-      orderId: result.orderId,
-      status: result.status,
-      filled: result.filled,
-      marketQuestion: market.question,
-      side,
-      amountUsdc,
-    };
-  },
-});
-
-export const getPositionsTool = tool({
-  description:
-    "Read the broker wallet's current Polymarket positions. Use after placing a trade to confirm it landed, or when the user asks 'what do I hold'. Pass the wallet address from wallet_status.",
-  inputSchema: z.object({
-    address: z.string().describe("The wallet address to query."),
-  }),
-  execute: async ({ address }) => {
-    const positions = await getPositions(address);
-    return { positions };
   },
 });
 
@@ -669,10 +575,5 @@ export const brokerTools = {
   assess_basis_risk: assessBasisRiskTool,
   compose_basket: composeBasketTool,
   what_if: whatIfTool,
-  wallet_status: walletStatusTool,
-  setup_wallet: setupWalletTool,
-  run_approvals: runApprovalsTool,
-  place_order: placeOrderTool,
-  get_positions: getPositionsTool,
   suggest_replies: suggestRepliesTool,
 };

@@ -116,14 +116,11 @@ describe("normalizeMarket", () => {
     expect(market.settlement.sources[0]?.name).toBe("NWS Climatological Report");
   });
 
-  it("exposes the identifiers an order needs under a kalshi-tagged execution", () => {
+  it("identifies the contract by its venue ticker and links to it", () => {
     const market = normalizeMarket(LESS_RUNG, CONTEXT);
-    expect(market.execution).toEqual({
-      venue: "kalshi",
-      ticker: "KXHIGHNY-26AUG02-T80",
-      eventTicker: "KXHIGHNY-26AUG02",
-      seriesTicker: "KXHIGHNY",
-    });
+    expect(market.venue).toBe("kalshi");
+    expect(market.id).toBe("KXHIGHNY-26AUG02-T80");
+    expect(market.url).toContain("kalshi.com");
   });
 
   it("marks a contract untradeable when neither side has a live ask", () => {

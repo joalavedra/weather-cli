@@ -60,15 +60,15 @@ describe("solveCover", () => {
   });
 
   it("derives the premium from the loss rather than taking it as input", () => {
-    expect(plan.premiumPerDayUsdc).toBeGreaterThan(0);
-    expect(plan.premiumPerDayUsdc).toBeCloseTo(
+    expect(plan.premiumPerDayUsd).toBeGreaterThan(0);
+    expect(plan.premiumPerDayUsd).toBeCloseTo(
       plan.legs.reduce((sum, l) => sum + l.contracts * l.pricePerContract, 0),
       6,
     );
   });
 
   it("reports the limit as the largest single rung, since buckets are disjoint", () => {
-    expect(plan.limitUsdc).toBe(Math.max(...plan.legs.map((l) => l.contracts)));
+    expect(plan.limitUsd).toBe(Math.max(...plan.legs.map((l) => l.contracts)));
   });
 
   it("attaches at the fitted threshold", () => {
@@ -176,9 +176,9 @@ describe("coverProfile", () => {
       premises: series(VALUES),
     });
     const profile = coverProfile(plan, CURVE, [60, 67, 80]);
-    const nets = profile.map((row) => row.netUsdc);
+    const nets = profile.map((row) => row.netUsd);
     const spreadWithCover = Math.max(...nets) - Math.min(...nets);
-    const losses = profile.map((row) => -row.lossUsdc);
+    const losses = profile.map((row) => -row.lossUsd);
     const spreadWithout = Math.max(...losses) - Math.min(...losses);
     expect(spreadWithCover).toBeLessThan(spreadWithout);
   });
@@ -191,9 +191,9 @@ describe("coverProfile", () => {
       premises: series(VALUES),
     });
     const [row] = coverProfile(plan, CURVE, [60]);
-    expect(row?.lossUsdc).toBe(1000);
-    expect(row?.netUsdc).toBeCloseTo(
-      (row?.payoutUsdc ?? 0) - plan.premiumPerDayUsdc - 1000,
+    expect(row?.lossUsd).toBe(1000);
+    expect(row?.netUsd).toBeCloseTo(
+      (row?.payoutUsd ?? 0) - plan.premiumPerDayUsd - 1000,
       6,
     );
   });

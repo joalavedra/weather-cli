@@ -1,6 +1,6 @@
 # Roadmap
 
-Agent-native weather cover for small businesses. The thesis: per-city weather contracts on a regulated exchange can serve as supplemental, parameterized cover for the niche, short-tenor risks traditional insurers won't write — provided the two hard problems are confronted rather than hidden: **basis risk** (the contract trigger rarely matches the real cost center) and **privacy** (public orderbooks leak the hedge).
+Weather risk intelligence for small businesses. The thesis: per-city weather contracts on a regulated exchange can serve as supplemental, parameterized cover for the niche, short-tenor risks traditional insurers won't write — provided the two hard problems are confronted rather than hidden: **basis risk** (the contract trigger rarely matches the real cost center) and **privacy** (public orderbooks leak the hedge).
 
 ## Shipped
 
@@ -33,21 +33,26 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 - **International cover via Polymarket** (`polymarket.ts` rewritten). Kalshi lists US weather only. Polymarket runs daily high and low temperature ladders for ~50 cities across Europe, Asia, the Middle East, Africa, Oceania and South America, in 1°C buckets, each naming the airport station it settles on. Read over the public Gamma API rather than by spawning the `polymarket` CLI, which could not run serverless — so the deployed product previously had no international cover at all. Strikes are parsed from the question text and stations from the resolution rules, which is why this venue used to contribute nothing.
 - **Celsius is a first-class unit.** `StrikeUnit` gains `"C"`, observations are fetched in whichever scale a ladder settles in, and the display layer converts from the source scale rather than assuming Fahrenheit. Comparing a 30°C strike against a Fahrenheit observation would have been silent and badly wrong.
 
+- **Execution removed.** `trading.ts`, the wallet route and the five order-placement tools are gone, along with `execa` and `qrcode.react`. The platform measures risk across venues and names the exact instrument; it does not hold funds or route orders. That decision can be revisited once the measurements say whether brokerage is worth building.
+- **Simplification.** The `Execution` union is gone — `Market.id`, `venue` and `url` already identify a contract, and the CLOB fields existed only to place orders. Dead exports (`listVenues`, `findCover`, `listAllLadders`, `getSeries`) removed. Every `*Usdc` field is now `*Usd`, since Kalshi settles in dollars and the blanket suffix asserted a currency one venue doesn't use. The design mocks for the deleted terminal UI are gone.
+
 ## Next
+
+- **Does the basis hold up?** Every measurement so far has been unflattering — a Chicago patio bar came out at 0.615 measured trigger correlation, London at 0.944. Running fifteen or twenty realistic business profiles across both venues and looking at the distribution decides what this product is. Mostly above 0.85 and brokerage is real; mostly below 0.7 and the valuable output is "don't buy this", which is a diagnostics product with a different shape and a different business model.
+- **Season cover, not single-day.** A quote of $0.24 per day of cover is not a product; a business exposed June to August needs ninety days. `solveCover` already replays across seasons — it just prices one event.
+- **An order ticket.** The honest terminus for an intelligence product: venue, contract, bucket, size, limit price, linked to the venue. Deferred until the basis study says whether anyone should be buying.
 - **Revenue upload in the web app.** Loss fitting is CLI-only today because it needs a CSV. The chat broker needs a file drop before an owner can use it.
 - **Fair-value check.** Compare the market-implied probability of a rung against the climatological base rate from the same archive, so a client can see whether cover is cheap or dear.
-- **Backtest tool for the chat broker.** `solve_cover` carries a replay, but there's no way to replay an arbitrary hand-built structure from chat the way `weather backtest` can.
 - **Historical prices.** Premium is charged at today's ask on every replayed day. Kalshi publishes candlesticks per market; using them would make the loss ratio trustworthy rather than indicative.
 - **MCP server.** The tool layer is trapped in `apps/web/lib/tools.ts`. Extract it so one implementation serves MCP, HTTP and the CLI, and the client's own agent can buy cover.
 - **Standing policies.** There is no `Policy` object — only one-shot quotes. Real cover renews, rolls, expires and settles. "Keep me covered for cold LA weekends through October, ≤$25/day" is a scheduled agent plus spend limits, and it's the difference between a demo and a product.
-- **Kalshi execution.** Discovery and pricing are done; binding needs an API key with RSA request signing. `place_order` currently refuses non-Polymarket contracts rather than misrouting.
 - **Settlement accounting.** After resolution, report loss vs payout vs realized basis. That's the dataset that makes correlation scoring credible, and nobody else publishes it.
 - **Vertical templates.** Ice cream, patio bar, ski rental, landscaping, outdoor events, golf — each with a default peril, threshold and starting loss curve.
 - **Station-grade observations.** Open-Meteo's archive is gridded reanalysis, not the NWS station record contracts settle on. It measures the relationship between two places well, but two points in one grid cell read as identical. GHCN or the NWS API would give the true station series.
 
 ## Deferred
 
-- **Privacy / pooling.** Public orderbooks can dox a business's hedge. Mitigation: route pooled positions through backend wallets so individual exposure isn't legible. Parked, kept here so it isn't lost.
+- **Privacy / pooling.** Public orderbooks can dox a business's hedge. Only relevant if execution is ever brought in-house; with the client placing their own orders it is their exposure to manage. Parked, kept here so it isn't lost.
 
 - Clients, revenue and the geocode cache persist through `lib/store.ts` — Vercel Blob when its token is present, the filesystem otherwise. The temp directory was per-instance on serverless, so a client created on one lambda was invisible to the next request and attaching revenue failed outright in production while working locally.
 - Stored revenue is unencrypted with no user model, no expiry and no access control — the id is the only thing gating it, and the blob store is public-read by URL. Fine for a single-tenant demo, not for real clients.
