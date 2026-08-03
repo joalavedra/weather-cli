@@ -1,7 +1,8 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, RotateCw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LossCurveChart } from "@/components/charts/loss-curve-chart";
@@ -16,10 +17,12 @@ export function LossCurveCard({
   result,
   loading,
   error,
+  onRetry,
 }: {
   result: CurveResult | null;
   loading: boolean;
   error: string | null;
+  onRetry: () => void;
 }) {
   const units = useUnits();
   const source = result?.curve.unit === "C" ? "C" : "F";
@@ -40,7 +43,12 @@ export function LossCurveCard({
         {error ? (
           <Alert variant="destructive">
             <AlertTriangle className="size-4" />
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription className="flex flex-wrap items-center gap-3">
+              <span>{error}</span>
+              <Button size="sm" variant="outline" onClick={onRetry} className="gap-1.5">
+                <RotateCw className="size-3.5" /> Try again
+              </Button>
+            </AlertDescription>
           </Alert>
         ) : null}
         {result ? (
