@@ -14,7 +14,7 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { head, list, put } from "@vercel/blob";
+import { get, list, put } from "@vercel/blob";
 
 const TOKEN = process.env["BLOB_READ_WRITE_TOKEN"];
 
@@ -36,7 +36,10 @@ export async function putJson(key: string, value: unknown): Promise<void> {
   const body = JSON.stringify(value);
   if (TOKEN) {
     await put(`${key}.json`, body, {
-      access: "public",
+      // The store is private, so blobs are only readable with the token — the
+      // ids are unguessable but a public store would still be a URL away from
+      // somebody else's revenue.
+      access: "private",
       token: TOKEN,
       contentType: "application/json",
       // Keys are looked up by name, so the pathname has to stay predictable,
@@ -53,11 +56,9 @@ export async function putJson(key: string, value: unknown): Promise<void> {
 export async function getJson<T>(key: string): Promise<T | null> {
   assertSafeKey(key);
   if (TOKEN) {
-    const found = await head(`${key}.json`, { token: TOKEN }).catch(() => null);
+    const found = await get(`${key}.json`, { access: "private", token: TOKEN }).catch(() => null);
     if (!found) return null;
-    const response = await fetch(found.downloadUrl ?? found.url, { cache: "no-store" });
-    if (!response.ok) return null;
-    return (await response.json()) as T;
+    return (await new Response(found.stream).json()) as T;
   }
   try {
     return JSON.parse(await readFile(localPath(key), "utf8")) as T;
@@ -74,8 +75,8 @@ export async function listJson<T>(prefix: string): Promise<T[]> {
     const { blobs } = await list({ prefix: `${prefix}/`, token: TOKEN, limit: 1000 });
     const loaded = await Promise.all(
       blobs.map(async (blob): Promise<T | null> => {
-        const response = await fetch(blob.downloadUrl ?? blob.url, { cache: "no-store" });
-        return response.ok ? ((await response.json()) as T) : null;
+        const found = await get(blob.pathname, { access: "private", token: TOKEN }).catch(() => null);
+        return found ? ((await new Response(found.stream).json()) as T) : null;
       }),
     );
     return loaded.filter((value): value is Awaited<T> => value !== null);
