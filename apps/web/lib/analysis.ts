@@ -7,9 +7,6 @@
  * `@weather/core`; this module is the shared plumbing that turns a stored
  * client into the inputs those functions want.
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import {
   alignSamples,
   coverProfile,
@@ -24,6 +21,7 @@ import {
 } from "@weather/core";
 import type { CoverPlan, DailySeries, GeoPoint, Ladder, LossCurve } from "@weather/core";
 import { loadDataset } from "@/lib/datasets";
+import { getJson, putJson } from "@/lib/store";
 import type { Client } from "@/lib/clients";
 
 /** How far back to pull observations when measuring basis or replaying cover. */
@@ -266,29 +264,20 @@ export interface CoverOption {
  * it for the whole process, and the nearest — only — cover for a Chicago business
  * silently disappeared. A miss must stay retryable.
  */
-const GEOCODE_CACHE_PATH = path.join(os.tmpdir(), "weather-cover", "geocode.json");
+const GEOCODE_CACHE_KEY = "cache/geocode";
 
 let geocodeCache: Map<string, GeoPoint> | null = null;
 
 async function loadGeocodeCache(): Promise<Map<string, GeoPoint>> {
   if (geocodeCache) return geocodeCache;
-  try {
-    const raw = JSON.parse(await readFile(GEOCODE_CACHE_PATH, "utf8")) as Record<string, GeoPoint>;
-    geocodeCache = new Map(Object.entries(raw));
-  } catch {
-    geocodeCache = new Map();
-  }
+  const stored = await getJson<Record<string, GeoPoint>>(GEOCODE_CACHE_KEY).catch(() => null);
+  geocodeCache = new Map(Object.entries(stored ?? {}));
   return geocodeCache;
 }
 
 async function saveGeocodeCache(): Promise<void> {
   if (!geocodeCache) return;
-  await mkdir(path.dirname(GEOCODE_CACHE_PATH), { recursive: true });
-  await writeFile(
-    GEOCODE_CACHE_PATH,
-    JSON.stringify(Object.fromEntries(geocodeCache)),
-    "utf8",
-  ).catch(() => undefined);
+  await putJson(GEOCODE_CACHE_KEY, Object.fromEntries(geocodeCache)).catch(() => undefined);
 }
 
 /** Concurrent lookups. Higher than this and the geocoder starts dropping connections. */

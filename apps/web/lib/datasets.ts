@@ -11,24 +11,10 @@
  * and a directory of JSON is inspectable, portable, and trivial to delete —
  * which matters when the contents are somebody's revenue.
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import os from "node:os";
-import path from "node:path";
 import { parseRevenueCsv } from "@weather/core";
 import type { RevenueDay } from "@weather/core";
-
-/**
- * Where uploaded revenue lands.
- *
- * The system temp directory rather than the project directory, because a
- * serverless filesystem is read-only everywhere else. On Vercel that makes
- * storage per-instance and ephemeral: an upload and a later tool call can land
- * on different lambdas, and the second one won't find the dataset. Set
- * `REVENUE_DATA_DIR` to a persistent path when running somewhere with a disk.
- */
-const DATA_DIR =
-  process.env["REVENUE_DATA_DIR"] ?? path.join(os.tmpdir(), "weather-cover", "revenue");
+import { getJson, putJson } from "@/lib/store";
 
 /** Rows below this can't support a loss fit, so reject at the door. */
 const MIN_ROWS = 30;
@@ -53,11 +39,11 @@ function idFor(csv: string): string {
   return `rev_${createHash("sha256").update(csv).digest("hex").slice(0, 12)}`;
 }
 
-function pathFor(id: string): string {
+function keyFor(id: string): string {
   if (!/^rev_[a-f0-9]{12}$/.test(id)) {
     throw new Error(`"${id}" is not a dataset id — expected the id returned by the upload`);
   }
-  return path.join(DATA_DIR, `${id}.json`);
+  return `revenue/${id}`;
 }
 
 export function summarize(dataset: RevenueDataset): DatasetSummary {
@@ -92,21 +78,16 @@ export async function storeRevenueCsv(csv: string): Promise<RevenueDataset> {
     end: dates.at(-1) ?? "",
     uploadedAt: new Date().toISOString(),
   };
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(pathFor(dataset.id), JSON.stringify(dataset), "utf8");
+  await putJson(keyFor(dataset.id), dataset);
   return dataset;
 }
 
 export async function loadDataset(id: string): Promise<RevenueDataset> {
-  try {
-    return JSON.parse(await readFile(pathFor(id), "utf8")) as RevenueDataset;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error(
-        `no revenue dataset called "${id}" — ask the client to upload their daily takings first`,
-        { cause: error },
-      );
-    }
-    throw error;
+  const dataset = await getJson<RevenueDataset>(keyFor(id));
+  if (!dataset) {
+    throw new Error(
+      `no revenue dataset called "${id}" — ask the client to upload their daily takings first`,
+    );
   }
+  return dataset;
 }

@@ -44,8 +44,8 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 
 - **Privacy / pooling.** Public orderbooks can dox a business's hedge. Mitigation: route pooled positions through backend wallets so individual exposure isn't legible. Parked, kept here so it isn't lost.
 
-- Uploaded revenue is stored unencrypted with no user model, no expiry and no access control — the id is the only thing gating it. Fine for a single-tenant demo, not for real clients.
-- On serverless the store falls back to the system temp directory, which is per-instance and ephemeral: an upload and a later tool call can land on different lambdas and the dataset won't be found. Needs blob storage or a database to be reliable in production. `REVENUE_DATA_DIR` points it at a real disk when one exists.
+- Clients, revenue and the geocode cache persist through `lib/store.ts` — Vercel Blob when its token is present, the filesystem otherwise. The temp directory was per-instance on serverless, so a client created on one lambda was invisible to the next request and attaching revenue failed outright in production while working locally.
+- Stored revenue is unencrypted with no user model, no expiry and no access control — the id is the only thing gating it, and the blob store is public-read by URL. Fine for a single-tenant demo, not for real clients.
 
 - The workbench has no component or end-to-end tests. It was verified by driving the real UI in a browser, but nothing guards it against regression.
 - Cover options are capped at four distinct locations within 150km and six dates each; nothing tells the broker what was dropped.

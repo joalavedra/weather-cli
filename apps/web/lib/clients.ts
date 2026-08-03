@@ -10,14 +10,9 @@
  * A self-serve owner has exactly one of these and never thinks of it as a
  * "client"; a broker has many. Same record either way.
  */
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
-import os from "node:os";
-import path from "node:path";
 import type { Peril } from "@weather/core";
-
-const DATA_DIR =
-  process.env["CLIENT_DATA_DIR"] ?? path.join(os.tmpdir(), "weather-cover", "clients");
+import { getJson, listJson, putJson } from "@/lib/store";
 
 export interface Client {
   id: string;
@@ -35,11 +30,11 @@ export interface Client {
 export type ClientDraft = Pick<Client, "name" | "premises" | "peril"> &
   Partial<Pick<Client, "months" | "datasetId">>;
 
-function pathFor(id: string): string {
+function keyFor(id: string): string {
   if (!/^[a-f0-9-]{8,40}$/.test(id)) {
     throw new Error(`"${id}" is not a client id`);
   }
-  return path.join(DATA_DIR, `${id}.json`);
+  return `clients/${id}`;
 }
 
 function validate(draft: ClientDraft): void {
@@ -65,20 +60,14 @@ export async function createClient(draft: ClientDraft): Promise<Client> {
     datasetId: draft.datasetId ?? null,
     createdAt: new Date().toISOString(),
   };
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(pathFor(client.id), JSON.stringify(client), "utf8");
+  await putJson(keyFor(client.id), client);
   return client;
 }
 
 export async function getClient(id: string): Promise<Client> {
-  try {
-    return JSON.parse(await readFile(pathFor(id), "utf8")) as Client;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error(`no client called "${id}"`, { cause: error });
-    }
-    throw error;
-  }
+  const client = await getJson<Client>(keyFor(id));
+  if (!client) throw new Error(`no client called "${id}"`);
+  return client;
 }
 
 export async function updateClient(id: string, patch: Partial<ClientDraft>): Promise<Client> {
@@ -92,24 +81,14 @@ export async function updateClient(id: string, patch: Partial<ClientDraft>): Pro
     ...(patch.datasetId !== undefined && { datasetId: patch.datasetId }),
   };
   validate(merged);
-  await writeFile(pathFor(id), JSON.stringify(merged), "utf8");
+  await putJson(keyFor(id), merged);
   return merged;
 }
 
 /** Every client on disk, newest first. */
 export async function listClients(): Promise<Client[]> {
-  try {
-    const files = await readdir(DATA_DIR);
-    const clients = await Promise.all(
-      files
-        .filter((f) => f.endsWith(".json"))
-        .map(async (f) => JSON.parse(await readFile(path.join(DATA_DIR, f), "utf8")) as Client),
-    );
-    return clients.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
-  }
+  const clients = await listJson<Client>("clients");
+  return clients.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 /** Stable colour seed so a client reads the same across the UI. */
