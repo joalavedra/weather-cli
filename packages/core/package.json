@@ -1,5 +1,6 @@
 {
   "name": "@weather/core",
+  "description": "Domain core: venue adapters, loss fitting, basis measurement, cover solving",
   "version": "0.1.0",
   "private": true,
   "type": "module",

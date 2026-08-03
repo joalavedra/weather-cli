@@ -2,7 +2,7 @@
  * Revenue datasets a client has uploaded.
  *
  * The analysis surface has been CLI-only because every useful function needs a
- * business's own daily revenue, and the chat broker had no way to receive it.
+ * business's own daily revenue, and the web app had no way to receive it.
  * This is that missing piece: a CSV lands here once, gets an id, and the id is
  * all the model has to carry. Tools take the id and pull the rows themselves,
  * so hundreds of days of takings never pass through the conversation.

@@ -1,5 +1,6 @@
 {
-  "name": "weather-cli-monorepo",
+  "name": "weather-cover",
+  "description": "Weather risk intelligence for small businesses",
   "version": "0.1.0",
   "private": true,
   "type": "module",
