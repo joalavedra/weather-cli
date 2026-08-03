@@ -31,6 +31,22 @@ function assertSafeKey(key: string): void {
   }
 }
 
+/**
+ * Records that change after they are written.
+ *
+ * Blob serves reads from a CDN by default, and `cacheControlMaxAge` cannot go
+ * below a minute — far longer than the seconds between listing a client and
+ * attaching revenue to it. Those reads must come from origin or an update is
+ * invisible: a client patched successfully, the write returned 200, and the
+ * next request still saw `datasetId: null`.
+ *
+ * Immutable records keep the cache. A revenue dataset is keyed by a hash of its
+ * own contents, so it can never be stale.
+ */
+function isMutable(key: string): boolean {
+  return key.startsWith("clients/") || key.startsWith("cache/");
+}
+
 export async function putJson(key: string, value: unknown): Promise<void> {
   assertSafeKey(key);
   const body = JSON.stringify(value);
@@ -56,7 +72,11 @@ export async function putJson(key: string, value: unknown): Promise<void> {
 export async function getJson<T>(key: string): Promise<T | null> {
   assertSafeKey(key);
   if (TOKEN) {
-    const found = await get(`${key}.json`, { access: "private", token: TOKEN }).catch(() => null);
+    const found = await get(`${key}.json`, {
+      access: "private",
+      token: TOKEN,
+      ...(isMutable(key) && { useCache: false }),
+    }).catch(() => null);
     if (!found) return null;
     return (await new Response(found.stream).json()) as T;
   }
@@ -75,7 +95,11 @@ export async function listJson<T>(prefix: string): Promise<T[]> {
     const { blobs } = await list({ prefix: `${prefix}/`, token: TOKEN, limit: 1000 });
     const loaded = await Promise.all(
       blobs.map(async (blob): Promise<T | null> => {
-        const found = await get(blob.pathname, { access: "private", token: TOKEN }).catch(() => null);
+        const found = await get(blob.pathname, {
+          access: "private",
+          token: TOKEN,
+          ...(isMutable(prefix) && { useCache: false }),
+        }).catch(() => null);
         return found ? ((await new Response(found.stream).json()) as T) : null;
       }),
     );

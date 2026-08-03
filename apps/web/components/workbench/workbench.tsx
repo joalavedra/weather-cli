@@ -70,6 +70,18 @@ export function Workbench() {
       .catch((error: unknown) => toast.error(message(error)));
   }, []);
 
+  const loadCurve = useCallback(
+    (client: Client) => {
+      if (!client.datasetId) return;
+      setCurve({ data: null, loading: true, error: null });
+      void api
+        .fetchCurve(client.id, units === "metric" ? "C" : "F")
+        .then((data) => setCurve({ data, loading: false, error: null }))
+        .catch((error: unknown) => setCurve({ data: null, loading: false, error: message(error) }));
+    },
+    [units],
+  );
+
   // Selecting a client resets the canvas: nothing below survives the switch.
   useEffect(() => {
     setCurve(idle);
@@ -88,12 +100,8 @@ export function Workbench() {
 
     if (!active.datasetId) return;
     void api.fetchDataset(active.datasetId).then(setDataset).catch(() => undefined);
-    setCurve({ data: null, loading: true, error: null });
-    void api
-      .fetchCurve(active.id, units === "metric" ? "C" : "F")
-      .then((data) => setCurve({ data, loading: false, error: null }))
-      .catch((error: unknown) => setCurve({ data: null, loading: false, error: message(error) }));
-  }, [active?.id, active?.datasetId, units]);
+    loadCurve(active);
+  }, [active?.id, active?.datasetId, units, loadCurve]);
 
   const pickLadder = useCallback(
     (ticker: string) => {
@@ -121,6 +129,10 @@ export function Workbench() {
   function onRevenueAttached(client: Client, summary: DatasetSummary) {
     setClients((prev) => prev.map((c) => (c.id === client.id ? client : c)));
     setDataset(summary);
+    // Fit immediately off the client the upload just returned, rather than
+    // waiting for the effect to notice: it is the authoritative copy, and the
+    // effect only re-runs if React sees the id change.
+    loadCurve(client);
   }
 
   const season =
@@ -175,6 +187,7 @@ export function Workbench() {
                     result={curve.data}
                     loading={curve.loading}
                     error={curve.error}
+                    onRetry={() => loadCurve(active)}
                   />
                 ) : null}
                 <CoverCard
