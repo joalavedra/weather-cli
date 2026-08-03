@@ -45,6 +45,8 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 
 - "Cold hurts me" usually belongs on the *high* temperature ladder rather than the low one — a cold day is a day whose high stayed low. The prompt says so, but peril routing doesn't yet derive this from the fitted curve, and a `low_temp` filter can miss live cover.
 
+- `apps/web/package.json` deliberately omits `"type": "module"`, against the repo's ESM-only convention. Vercel's Node launcher `require()`s Next's compiled route handlers, so declaring the package ESM made every API route fail with `ERR_REQUIRE_ESM` in production while working locally. Next controls its own output format; the field only affected the serverless launcher.
+
 ## Known debt
 
 - `--type-aware` linting flags `no-unsafe-type-assertion` across `Chat.tsx` and `WalletPanel.tsx`, where AI SDK tool outputs are narrowed from `unknown`. Fixing it properly means deriving those types from the tool schemas. The default `pnpm lint` gate is plain oxlint and is clean.
