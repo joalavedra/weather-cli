@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { LossCurveChart } from "@/components/charts/loss-curve-chart";
 import { Note, Stat, pct, usd } from "@/components/workbench/primitives";
+import { formatTemp, ratePerDegree, tempUnitLabel, useUnits } from "@/lib/units";
 import type { CurveResult } from "@/lib/analysis";
 
 /** Below this, weather isn't what's moving the till and cover isn't warranted. */
@@ -20,7 +21,8 @@ export function LossCurveCard({
   loading: boolean;
   error: string | null;
 }) {
-  const unitLabel = result?.curve.unit === "F" ? "°F" : "";
+  const units = useUnits();
+  const unitLabel = result?.curve.unit === "F" ? tempUnitLabel(units) : "";
   const weak = result ? result.curve.rSquared < WEAK_FIT || result.curve.slopePerUnit <= 0 : false;
 
   return (
@@ -44,11 +46,11 @@ export function LossCurveCard({
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <Stat
                 label="Loss starts"
-                value={`${result.curve.direction === "below" ? "↓" : "↑"} ${result.curve.threshold}${unitLabel}`}
+                value={`${result.curve.direction === "below" ? "↓" : "↑"} ${formatTemp(result.curve.threshold, units)}`}
               />
               <Stat
-                label="Cost per degree"
-                value={usd(Math.round(result.curve.slopePerUnit))}
+                label={`Cost per ${unitLabel || "unit"}`}
+                value={usd(Math.round(ratePerDegree(result.curve.slopePerUnit, units)))}
                 tone={result.curve.slopePerUnit > 0 ? "bad" : "default"}
               />
               <Stat label="Normal day" value={usd(Math.round(result.curve.baseline))} />
@@ -65,13 +67,13 @@ export function LossCurveCard({
                 <AlertDescription>{result.summary}</AlertDescription>
               </Alert>
             ) : (
-              <Note>{result.summary}</Note>
+              <Note>
+                Below {formatTemp(result.curve.threshold, units)} this business loses about{" "}
+                {usd(Math.round(ratePerDegree(result.curve.slopePerUnit, units)))} per{" "}
+                {unitLabel}, and weather explains {pct(result.curve.rSquared)} of revenue swings.
+              </Note>
             )}
-            <LossCurveChart
-              curve={result.curve}
-              scatter={result.scatter}
-              unitLabel={unitLabel}
-            />
+            <LossCurveChart curve={result.curve} scatter={result.scatter} />
             <Note>
               Measured at {result.point.name ?? "the premises"}. Each dot is one day&apos;s
               takings; the line is the fitted relationship.

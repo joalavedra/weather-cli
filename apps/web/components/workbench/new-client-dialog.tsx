@@ -7,6 +7,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { PlaceInput } from "@/components/workbench/place-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { MONTHS, PERILS } from "@/components/workbench/primitives";
@@ -19,6 +20,7 @@ export function NewClientDialog({ onCreated }: { onCreated: (client: Client) => 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [premises, setPremises] = useState("");
+  const [placeLabel, setPlaceLabel] = useState<string | null>(null);
   const [peril, setPeril] = useState<Peril>("high_temp");
   const [months, setMonths] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
@@ -39,6 +41,7 @@ export function NewClientDialog({ onCreated }: { onCreated: (client: Client) => 
       setOpen(false);
       setName("");
       setPremises("");
+      setPlaceLabel(null);
       setMonths([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -69,12 +72,14 @@ export function NewClientDialog({ onCreated }: { onCreated: (client: Client) => 
           </div>
           <div className="space-y-2">
             <Label htmlFor="nc-premises">Location</Label>
-            <Input id="nc-premises" value={premises} onChange={(e) => setPremises(e.target.value)}
-              placeholder="Chicago — or 41.93,-87.64" />
-            <p className="text-muted-foreground text-xs">
-              Coordinates are worth the precision: cover is measured at a specific weather
-              station, and a few miles can change what it pays.
-            </p>
+            <PlaceInput
+              value={premises}
+              label={placeLabel}
+              onChange={(next, nextLabel) => {
+                setPremises(next);
+                setPlaceLabel(nextLabel);
+              }}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="nc-peril">What drives the loss</Label>

@@ -3,6 +3,7 @@
 import { CartesianGrid, Line, ComposedChart, ReferenceLine, Scatter, XAxis, YAxis } from "recharts";
 import type { LossCurve } from "@weather/core";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { tempUnitLabel, tempValue, useUnits } from "@/lib/units";
 import type { ChartConfig } from "@/components/ui/chart";
 
 const config = {
@@ -20,13 +21,16 @@ const config = {
 export function LossCurveChart({
   curve,
   scatter,
-  unitLabel,
 }: {
   curve: LossCurve;
   scatter: Array<{ value: number; revenue: number }>;
-  unitLabel: string;
 }) {
-  const values = scatter.map((s) => s.value);
+  const units = useUnits();
+  const unitLabel = curve.unit === "F" ? tempUnitLabel(units) : "";
+  // Convert before plotting so the axis ticks land on whole degrees in
+  // whichever unit is being read, rather than on converted Fahrenheit steps.
+  const convert = (v: number) => (curve.unit === "F" ? tempValue(v, units) : v);
+  const values = scatter.map((s) => convert(s.value));
   const low = Math.floor(Math.min(...values));
   const high = Math.ceil(Math.max(...values));
 
@@ -42,11 +46,11 @@ export function LossCurveChart({
         curve.direction === "below"
           ? Math.max(0, curve.threshold - value)
           : Math.max(0, value - curve.threshold);
-      return { value, fit: curve.baseline - curve.slopePerUnit * past };
+      return { value: convert(value), fit: curve.baseline - curve.slopePerUnit * past };
     })
     .filter((point) => point.fit >= 0);
 
-  const points = scatter.map((s) => ({ value: s.value, revenue: s.revenue }));
+  const points = scatter.map((s) => ({ value: convert(s.value), revenue: s.revenue }));
 
   return (
     <ChartContainer config={config} className="h-[260px] w-full">
@@ -59,7 +63,7 @@ export function LossCurveChart({
           tickLine={false}
           axisLine={false}
           tickMargin={8}
-          tickFormatter={(v: number) => `${v}${unitLabel}`}
+          tickFormatter={(v: number) => `${Math.round(v)}${unitLabel}`}
         />
         <YAxis
           tickLine={false}
@@ -80,11 +84,11 @@ export function LossCurveChart({
           }
         />
         <ReferenceLine
-          x={curve.threshold}
+          x={convert(curve.threshold)}
           stroke="var(--chart-5)"
           strokeDasharray="4 4"
           label={{
-            value: `${curve.threshold}${unitLabel}`,
+            value: `${convert(curve.threshold).toFixed(1)}${unitLabel}`,
             position: "top",
             fill: "var(--chart-5)",
             fontSize: 11,

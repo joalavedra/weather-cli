@@ -9,9 +9,11 @@
  */
 import type {
   BasisResult,
+  CoveragePlace,
   CoverOption,
   CoverResult,
   CurveResult,
+  PlaceSuggestion,
 } from "@/lib/analysis";
 import type { Client, ClientDraft } from "@/lib/clients";
 import type { DatasetSummary } from "@/lib/datasets";
@@ -59,6 +61,18 @@ export async function uploadRevenue(file: File): Promise<DatasetSummary> {
   body.append("file", file);
   const response = await fetch(base("/api/revenue"), { method: "POST", body });
   return (await unwrap<{ dataset: DatasetSummary }>(response)).dataset;
+}
+
+export async function searchPlaces(query: string): Promise<PlaceSuggestion[]> {
+  return (
+    await unwrap<{ places: PlaceSuggestion[] }>(
+      await fetch(base(`/api/geocode?q=${encodeURIComponent(query)}`)),
+    )
+  ).places;
+}
+
+export async function fetchCoverage(): Promise<CoveragePlace[]> {
+  return (await unwrap<{ places: CoveragePlace[] }>(await fetch(base("/api/coverage")))).places;
 }
 
 export async function fetchDataset(id: string): Promise<DatasetSummary> {

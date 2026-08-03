@@ -24,6 +24,20 @@ describe("perilFromText", () => {
     expect(perilFromText("Denver Snow low temp Christmas")).toBe("snow");
   });
 
+  it("does not match a peril word buried inside another word", () => {
+    // Real Polymarket titles: these were being classified as rain.
+    expect(perilFromText("Rainbow Six Siege: Chiefs vs TYLOO")).toBe("other");
+    expect(perilFromText("Nick Fuentes and Sophie Rain confirmed relationship")).toBe("rain");
+    expect(perilFromText("Will Wildcard Win EWC Rainbow Six Siege")).toBe("other");
+  });
+
+  it("still matches the ordinary inflections", () => {
+    expect(perilFromText("Total rainfall in Miami")).toBe("rain");
+    expect(perilFromText("Snowfall Chicago")).toBe("snow");
+    expect(perilFromText("Number of Tornadoes")).toBe("tornado");
+    expect(perilFromText("Windy day")).toBe("wind");
+  });
+
   it("falls back to `other` rather than guessing a peril it can't see", () => {
     expect(perilFromText("CO2 level")).toBe("other");
     expect(perilFromText("Biggest earthquake")).toBe("other");

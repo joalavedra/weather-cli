@@ -12,6 +12,9 @@ import { LossCurveCard } from "@/components/workbench/loss-curve-card";
 import { MONTHS } from "@/components/workbench/primitives";
 import { RevenueCard } from "@/components/workbench/revenue-card";
 import { ThemeToggle } from "@/components/workbench/theme-toggle";
+import { UnitsToggle } from "@/components/workbench/units-toggle";
+import { UNITS_STORAGE_KEY, UnitsContext } from "@/lib/units";
+import type { UnitSystem } from "@/lib/units";
 import { EmptyState } from "@/components/workbench/empty-state";
 import * as api from "@/lib/api";
 import type { BasisResult, CoverOption, CoverResult, CurveResult } from "@/lib/analysis";
@@ -35,6 +38,19 @@ export function Workbench() {
   const [clients, setClients] = useState<Client[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dataset, setDataset] = useState<DatasetSummary | null>(null);
+  const [units, setUnits] = useState<UnitSystem>("imperial");
+
+  // Read the stored preference after mount so the server and client agree on
+  // the first paint and the numbers don't visibly switch units.
+  useEffect(() => {
+    const stored = localStorage.getItem(UNITS_STORAGE_KEY);
+    if (stored === "metric" || stored === "imperial") setUnits(stored);
+  }, []);
+
+  function changeUnits(next: UnitSystem) {
+    setUnits(next);
+    localStorage.setItem(UNITS_STORAGE_KEY, next);
+  }
 
   const [curve, setCurve] = useState<Async<CurveResult>>(idle);
   const [options, setOptions] = useState<Async<CoverOption[]>>(idle);
@@ -113,6 +129,7 @@ export function Workbench() {
       : "Year-round";
 
   return (
+    <UnitsContext.Provider value={units}>
     <div className="flex h-screen overflow-hidden">
       <ClientSidebar
         clients={clients}
@@ -136,7 +153,8 @@ export function Workbench() {
           ) : (
             <h1 className="text-sm font-semibold">Weather Cover</h1>
           )}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <UnitsToggle system={units} onChange={changeUnits} />
             <ThemeToggle />
           </div>
         </header>
@@ -180,5 +198,6 @@ export function Workbench() {
 
       <AssistantPanel client={active} />
     </div>
+    </UnitsContext.Provider>
   );
 }
