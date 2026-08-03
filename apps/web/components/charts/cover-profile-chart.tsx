@@ -36,7 +36,7 @@ export function CoverProfileChart({
 
   return (
     <ChartContainer config={config} className="h-[280px] w-full">
-      <ComposedChart accessibilityLayer data={data} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+      <ComposedChart accessibilityLayer data={data} margin={{ top: 20, right: 12, bottom: 4, left: 4 }}>
         <CartesianGrid vertical={false} strokeDasharray="3 3" />
         <XAxis
           dataKey="value"

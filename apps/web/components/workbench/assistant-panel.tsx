@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
-import { ArrowUp, Sparkles } from "lucide-react";
+import { ArrowUp, Sparkles, TriangleAlert } from "lucide-react";
 import Markdown from "react-markdown";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -50,15 +51,24 @@ const STARTERS = [
 
 export function AssistantPanel({ client }: { client: Client | null }) {
   const [input, setInput] = useState("");
+  const [failure, setFailure] = useState<string | null>(null);
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
       api: `${process.env["NEXT_PUBLIC_BASE_PATH"] ?? ""}/api/chat`,
     }),
+    /*
+     * Without this the stream's error frame is dropped and the question just
+     * sits there unanswered, which reads as the app hanging. A missing API key
+     * is the common case and the message says exactly that, so it's worth
+     * showing verbatim.
+     */
+    onError: (error) => setFailure(error.message),
   });
   const busy = status === "submitted" || status === "streaming";
 
   function send(text: string) {
     if (!text.trim() || busy) return;
+    setFailure(null);
     void sendMessage({ text }, { body: { clientId: client?.id } });
     setInput("");
   }
@@ -124,6 +134,12 @@ export function AssistantPanel({ client }: { client: Client | null }) {
             })
           )}
           {busy ? <div className="text-muted-foreground text-xs italic">thinking…</div> : null}
+          {failure ? (
+            <Alert variant="destructive">
+              <TriangleAlert className="size-4" />
+              <AlertDescription className="text-xs leading-relaxed">{failure}</AlertDescription>
+            </Alert>
+          ) : null}
         </div>
       </ScrollArea>
 

@@ -162,6 +162,7 @@ export function Workbench() {
                 <CoverCard
                   options={options.data ?? []}
                   optionsLoading={options.loading}
+                  optionsError={options.error}
                   active={eventTicker}
                   onPick={pickLadder}
                   result={cover.data}

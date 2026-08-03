@@ -58,6 +58,7 @@ function LadderPicker({
 export function CoverCard({
   options,
   optionsLoading,
+  optionsError,
   active,
   onPick,
   result,
@@ -66,6 +67,7 @@ export function CoverCard({
 }: {
   options: CoverOption[];
   optionsLoading: boolean;
+  optionsError: string | null;
   active: string | null;
   onPick: (eventTicker: string) => void;
   result: CoverResult | null;
@@ -85,14 +87,22 @@ export function CoverCard({
       </CardHeader>
       <CardContent className="space-y-5">
         {optionsLoading ? <Skeleton className="h-16 w-full" /> : null}
-        {!optionsLoading && options.length === 0 ? (
+        {optionsError ? (
+          <Alert variant="destructive">
+            <AlertTriangle className="size-4" />
+            <AlertDescription>Couldn&apos;t look for cover: {optionsError}</AlertDescription>
+          </Alert>
+        ) : null}
+        {!optionsLoading && !optionsError && options.length === 0 ? (
           <Note>
-            No live ladder settles near this business for that peril right now. Kalshi&apos;s
-            listings change constantly — worth checking again closer to the season.
+            No ladder settles within 150km of this business for that peril. Kalshi lists US
+            weather only, so a business outside the US won&apos;t find cover here at all; inside
+            it, listings move with the season and a nearer series may open closer to the date.
           </Note>
-        ) : (
+        ) : null}
+        {!optionsLoading && options.length > 0 ? (
           <LadderPicker options={options} active={active} onPick={onPick} />
-        )}
+        ) : null}
 
         {loading ? <Skeleton className="h-[280px] w-full" /> : null}
         {error ? (

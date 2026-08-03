@@ -50,7 +50,7 @@ export function LossCurveChart({
 
   return (
     <ChartContainer config={config} className="h-[260px] w-full">
-      <ComposedChart accessibilityLayer margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+      <ComposedChart accessibilityLayer margin={{ top: 20, right: 12, bottom: 4, left: 4 }}>
         <CartesianGrid vertical={false} strokeDasharray="3 3" />
         <XAxis
           dataKey="value"

@@ -86,13 +86,26 @@ export function NewClientDialog({ onCreated }: { onCreated: (client: Client) => 
           <div className="space-y-2">
             <Label>Exposed months <span className="text-muted-foreground">(none = year-round)</span></Label>
             <div className="flex flex-wrap gap-1.5">
-              {MONTHS.map((label, i) => (
-                <Badge key={label} variant={months.includes(i + 1) ? "default" : "outline"}
-                  onClick={() => toggleMonth(i + 1)}
-                  className={cn("cursor-pointer select-none", !months.includes(i + 1) && "text-muted-foreground")}>
-                  {label}
-                </Badge>
-              ))}
+              {MONTHS.map((label, i) => {
+                const on = months.includes(i + 1);
+                return (
+                  <Badge
+                    key={label}
+                    asChild
+                    variant={on ? "default" : "outline"}
+                    className={cn("select-none", !on && "text-muted-foreground")}
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggleMonth(i + 1)}
+                      className="cursor-pointer"
+                    >
+                      {label}
+                    </button>
+                  </Badge>
+                );
+              })}
             </div>
           </div>
           {error ? <p className="text-destructive text-sm">{error}</p> : null}
