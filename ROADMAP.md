@@ -21,7 +21,7 @@ Weather risk intelligence for small businesses. The thesis: per-city weather con
 - **The exposure invariant is enforced in code.** `priceCover` refuses a position whose payout would exceed stated exposure and names the premium that fits. Previously this was prompt text, which a model can talk itself out of.
 - **Out-of-sample evaluation.** Structures are sized on the earlier part of history and scored on a held-out tail. Sizing and scoring on the same days flatters every structure; when history is too short to split, `outOfSample` is false and the plan warns.
 
-- **Revenue upload in the chat broker.** `POST /api/revenue` parses and stores a `date,revenue` CSV keyed by a hash of the file; the `fit_loss_curve` and `solve_cover` tools take the id and read the rows server-side, so takings never pass through the model's context. Closes the gap that made the analysis CLI-only. The parser moved into core and now survives currency symbols, thousands separators, CRLF and extra columns.
+- **Revenue upload in the web app.** `POST /api/revenue` parses and stores a `date,revenue` CSV keyed by a hash of the file; the `fit_loss_curve` and `solve_cover` tools take the id and read the rows server-side, so takings never pass through the model's context. Closes the gap that made the analysis CLI-only. The parser moved into core and now survives currency symbols, thousands separators, CRLF and extra columns.
 
 - **Workbench UI** (`apps/web`). Rebuilt on shadcn/ui and Tailwind 4, replacing the terminal-aesthetic chat. A client list on the left, an analysis canvas in the middle (revenue → loss curve → cover → basis), and the assistant docked right with the active client injected into its system prompt. Charts are Recharts via shadcn's chart wrapper, with fixed colour roles: loss warm, payout blue, net green.
 - **Clients are a real record.** `lib/clients.ts` stores name, premises, peril and exposed months, so the four facts every calculation needs are stated once instead of re-elicited. A self-serve owner has one; a broker has many.
@@ -42,16 +42,15 @@ Weather risk intelligence for small businesses. The thesis: per-city weather con
 
 ## Next
 
+- **Station-grade observations.** The basis study's headline rests on gridded reanalysis, which smooths the microclimates that create basis risk — so 97% is an upper bound and the true figure is unknown. Real station records (GHCN or the NWS API) against real business addresses would confirm or kill it, and everything below depends on which. Do this first.
 - **Season cover, not single-day.** A quote of $0.24 per day of cover is not a product; a business exposed June to August needs ninety days. `solveCover` already replays across seasons — it just prices one event.
 - **An order ticket.** The honest terminus for an intelligence product: venue, contract, bucket, size, limit price, linked to the venue. Deferred until the basis study says whether anyone should be buying.
-- **Revenue upload in the web app.** Loss fitting is CLI-only today because it needs a CSV. The chat broker needs a file drop before an owner can use it.
 - **Fair-value check.** Compare the market-implied probability of a rung against the climatological base rate from the same archive, so a client can see whether cover is cheap or dear.
 - **Historical prices.** Premium is charged at today's ask on every replayed day. Kalshi publishes candlesticks per market; using them would make the loss ratio trustworthy rather than indicative.
-- **MCP server.** The tool layer is trapped in `apps/web/lib/tools.ts`. Extract it so one implementation serves MCP, HTTP and the CLI, and the client's own agent can buy cover.
-- **Standing policies.** There is no `Policy` object — only one-shot quotes. Real cover renews, rolls, expires and settles. "Keep me covered for cold LA weekends through October, ≤$25/day" is a scheduled agent plus spend limits, and it's the difference between a demo and a product.
+- **MCP server.** The tool layer is trapped in `apps/web/lib/tools.ts`. Extract it so one implementation serves MCP, HTTP and the CLI, and a client's own agent can ask what its weather risk costs.
+- **Standing policies.** There is no `Policy` object — only one-shot analyses. Cover renews, rolls, expires and settles, and tracking that is what turns a quote into an ongoing relationship. Depends on the execution decision.
 - **Settlement accounting.** After resolution, report loss vs payout vs realized basis. That's the dataset that makes correlation scoring credible, and nobody else publishes it.
 - **Vertical templates.** Ice cream, patio bar, ski rental, landscaping, outdoor events, golf — each with a default peril, threshold and starting loss curve.
-- **Station-grade observations.** Open-Meteo's archive is gridded reanalysis, not the NWS station record contracts settle on. It measures the relationship between two places well, but two points in one grid cell read as identical. GHCN or the NWS API would give the true station series.
 
 ## Deferred
 
@@ -60,7 +59,7 @@ Weather risk intelligence for small businesses. The thesis: per-city weather con
 - Clients, revenue and the geocode cache persist through `lib/store.ts` — Vercel Blob when its token is present, the filesystem otherwise. The temp directory was per-instance on serverless, so a client created on one lambda was invisible to the next request and attaching revenue failed outright in production while working locally.
 - Stored revenue is unencrypted with no user model, no expiry and no access control — the id is the only thing gating it, and the blob store is public-read by URL. Fine for a single-tenant demo, not for real clients.
 
-- The workbench has no component or end-to-end tests. It was verified by driving the real UI in a browser, but nothing guards it against regression.
+- The web app has no component or end-to-end tests. Every UI defect so far was found by driving it in a browser, and nothing guards against regression. This is the largest gap.
 - Cover options are capped at four distinct locations within 150km and six dates each; nothing tells the broker what was dropped.
 
 - Polymarket's ladders cluster single-degree buckets around the likely outcome, so a business whose loss starts well outside that range gets only the open-ended catch-all rung. Cover is coarse at the tails.
@@ -77,5 +76,5 @@ Weather risk intelligence for small businesses. The thesis: per-city weather con
 
 ## Known debt
 
-- `--type-aware` linting flags `no-unsafe-type-assertion` across `Chat.tsx` and `WalletPanel.tsx`, where AI SDK tool outputs are narrowed from `unknown`. Fixing it properly means deriving those types from the tool schemas. The default `pnpm lint` gate is plain oxlint and is clean.
+- `--type-aware` linting flags roughly forty `no-unsafe-type-assertion` warnings, concentrated in shadcn's vendored `chart.tsx` and in the `unknown`-narrowing that JSON boundaries require (`lib/store.ts`, `lib/api.ts`, `lib/analysis.ts`). Fixing it properly means schema-validating every response rather than casting. The default `pnpm lint` gate is plain oxlint and is clean.
 - Bucketed cover approximates a sloped loss with a step function, so it overpays at the top of a bucket and underpays at the bottom. Visible in `coverProfile`; narrower rungs would reduce it.

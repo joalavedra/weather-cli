@@ -40,7 +40,7 @@ import type {
 const program = new Command();
 program
   .name("weather")
-  .description("Find weather cover for a business and price it against a real loss.")
+  .description("Measure what weather costs a business and whether traded cover would help.")
   .option("--json", "output JSON instead of tables")
   .option("--venue <name>", "venue to route through (kalshi, polymarket)", "kalshi");
 
