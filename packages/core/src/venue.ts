@@ -13,7 +13,7 @@
  */
 import * as kalshi from "./kalshi.js";
 import * as polymarket from "./polymarket.js";
-import type { Ladder, Market, Peril, VenueId, WeatherSeries } from "./types.js";
+import type { Market, Peril, VenueId, WeatherSeries } from "./types.js";
 
 export interface CoverQuery {
   /** Free-text place, matched against the venue's own location naming. */
@@ -125,35 +125,3 @@ export function getVenue(id: VenueId = DEFAULT_VENUE): Venue {
   return venue;
 }
 
-export function listVenues(): VenueId[] {
-  return Object.keys(VENUES) as VenueId[];
-}
-
-/** Weather series available for a location, on the default venue. */
-export function findCover(query: CoverQuery = {}): Promise<WeatherSeries[]> {
-  return kalshi.findSeries(query);
-}
-
-/**
- * Every open temperature ladder across both venues.
- *
- * Kalshi covers US cities and settles in Fahrenheit against NWS reports;
- * Polymarket covers the rest of the world and settles in Celsius against
- * Wunderground airport stations. Neither is a superset, so cover for a business
- * anywhere means asking both and letting distance decide.
- */
-export async function listAllLadders(): Promise<Ladder[]> {
-  const [international, usSeries] = await Promise.all([
-    polymarket.listTemperatureLadders().catch(() => []),
-    kalshi.findSeries({ limit: 200 }).catch(() => []),
-  ]);
-  const usable = usSeries.filter((s) => s.peril === "high_temp" || s.peril === "low_temp");
-  const usLadders = await Promise.all(
-    usable.map(async (series) => {
-      const events = await kalshi.listEvents(series.ticker, 1).catch(() => []);
-      const first = events[0];
-      return first ? await kalshi.getLadder(first.eventTicker).catch(() => null) : null;
-    }),
-  );
-  return [...international, ...usLadders.filter((l): l is Ladder => l !== null)];
-}

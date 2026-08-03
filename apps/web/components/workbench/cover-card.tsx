@@ -119,10 +119,10 @@ export function CoverCard({
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <Stat
                 label="Premium"
-                value={usd(result.plan.premiumPerDayUsdc, { cents: true })}
+                value={usd(result.plan.premiumPerDayUsd, { cents: true })}
                 hint="per day of cover"
               />
-              <Stat label="Cover limit" value={usd(Math.round(result.plan.limitUsdc))} hint="worst bucket" />
+              <Stat label="Cover limit" value={usd(Math.round(result.plan.limitUsd))} hint="worst bucket" />
               <Stat
                 label="Attaches"
                 value={`${result.plan.direction === "below" ? "↓" : "↑"} ${formatTemp(result.plan.attachment, units, 1, result.curve.unit === "C" ? "C" : "F")}`}
@@ -131,7 +131,7 @@ export function CoverCard({
                 label="Worst day carried"
                 value={pct(result.plan.worstDayCovered)}
                 tone={result.plan.worstDayCovered > 0.5 ? "good" : "warn"}
-                hint={`of ${usd(Math.round(result.plan.worstDayLossUsdc))}`}
+                hint={`of ${usd(Math.round(result.plan.worstDayLossUsd))}`}
               />
             </div>
 

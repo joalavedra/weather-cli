@@ -165,7 +165,7 @@ export interface CoverResult {
   ladder: Ladder;
   curve: LossCurve;
   /** Loss, payout and net across the outcome range, for the profile chart. */
-  profile: Array<{ value: number; lossUsdc: number; payoutUsdc: number; netUsdc: number }>;
+  profile: Array<{ value: number; lossUsd: number; payoutUsd: number; netUsd: number }>;
 }
 
 /**

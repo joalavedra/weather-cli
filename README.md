@@ -1,16 +1,20 @@
-# Weather cover for small businesses
+# Weather risk intelligence for small businesses
 
 Businesses lose money when the weather turns. An ice cream shop takes ~20% less on a cold weekend; a patio bar empties in the rain; a landscaper stops billing in a freeze. Large firms have hedged this on weather derivatives since the late 1990s. Small ones never could — until per-city weather contracts started listing on regulated exchanges.
 
-This is a broker for that. Describe the weather that costs you money, and it finds the contracts that pay when it happens, sizes them against your actual exposure, and tells you honestly how much of your real loss the cover neutralizes.
+This works out what that costs a specific business, finds the traded contracts that would pay when it happens, and measures honestly how much of the real loss they'd actually cover. It does not hold funds or place orders: it tells you what to buy, how much of it, and — often — that you shouldn't.
 
 It is agent-native by design: everything the chat UI can do is a tool call over one shared domain core, so an agent can reach the same outcomes a person can. Both surfaces — chat and CLI — run the same analysis, because a client can upload a year of daily takings to either.
 
 ## Venues
 
-**Kalshi** is the default. It's a CFTC-designated contract market listing 291 series under Climate and Weather — per-city daily high and low temperature ladders, hourly directional temperature, rainfall, snowfall, hurricane landfall. Market data is public, so discovery and pricing need no credentials.
+Neither venue is a superset of the other, so both are read.
 
-**Polymarket** remains wired up for perils Kalshi doesn't list, and is currently the only venue with order placement implemented.
+**Kalshi** — US weather on a CFTC-designated contract market. 291 series under Climate and Weather: per-city daily high and low temperature ladders, rainfall, snowfall, hurricane landfall. Denominated in Fahrenheit, settling against National Weather Service climatological reports.
+
+**Polymarket** — the rest of the world. Daily high and low temperature ladders for around fifty cities across Europe, Asia, the Middle East, Africa, Oceania and South America, in 1°C buckets, settling against Wunderground airport stations.
+
+Both are read over public HTTP with no credentials. The difference in regulatory standing and resolution source is a real one and worth putting in front of a client — a resolution source is a thing that can be gamed.
 
 Routing lives in `packages/core/src/venue.ts`. Everything downstream works off a venue-neutral `Market`.
 
@@ -175,29 +179,27 @@ weather-cli/
 │   ├── types.ts          # venue-neutral Market, Strike, Settlement, Ladder
 │   ├── weather.ts        # peril / location / station taxonomy, shared by venues
 │   ├── observations.ts   # Open-Meteo history + geocoding (free, no key)
-│   ├── loss.ts           # fit a business's loss curve from its own revenue
+│   ├── loss.ts           # fit a loss curve from revenue; parse the CSV
 │   ├── geobasis.ts       # measured station-vs-premises trigger correlation
 │   ├── backtest.ts       # replay a structure against past seasons; solve sizing
 │   ├── cover.ts          # solve cover from a loss curve, priced as a premium
-│   ├── loss.ts           # (also) parse date,revenue CSV exports
 │   ├── hedge.ts          # price one contract as insurance; exposure invariant
 │   ├── kalshi.ts         # Kalshi adapter (public HTTP, no credentials)
-│   ├── polymarket.ts     # Polymarket adapter (wraps the `polymarket` CLI)
+│   ├── polymarket.ts     # Polymarket adapter (public Gamma API, international)
 │   ├── venue.ts          # Venue interface + registry + routing
 │   ├── basis.ts          # computeBasisRisk / composeBasket
-│   ├── elicit.ts         # estimateTriggerCorrelation
-│   └── trading.ts        # Polymarket wallet, approvals, orders
+│   └── elicit.ts         # estimateTriggerCorrelation
 ├── apps/cli/             # @weather/cli — `weather` command
-└── apps/web/             # @weather/web — Next.js 16 chat broker
+└── apps/web/             # @weather/web — Next.js 16 workbench + assistant
 ```
 
 Revenue lands via `POST /api/revenue` and is stored as JSON under `.data/revenue/`, keyed by a hash of the file so re-uploading is idempotent. The id goes into the conversation; the rows never do — tools read them server-side, so a business's takings don't pass through a model's context to reach the function that needs them.
 
-Tools exposed to the model: `fit_loss_curve`, `solve_cover`, `find_cover`, `list_events`, `get_ladder`, `find_contracts`, `get_market`, `compute_hedge_quote`, `estimate_correlation`, `measure_geographic_basis`, `assess_basis_risk`, `compose_basket`, `what_if`, `wallet_status`, `setup_wallet`, `run_approvals`, `place_order`, `get_positions`, `suggest_replies`.
+Tools exposed to the model: `fit_loss_curve`, `solve_cover`, `find_cover`, `list_events`, `get_ladder`, `find_contracts`, `get_market`, `compute_hedge_quote`, `estimate_correlation`, `measure_geographic_basis`, `assess_basis_risk`, `compose_basket`, `what_if`, `suggest_replies`.
 
 ## Running it
 
-Requirements: **Node 22+** and **pnpm 10**. Kalshi discovery works with no further setup. Polymarket needs the [`polymarket` CLI](https://github.com/Polymarket) on `$PATH` (or `POLYMARKET_BIN` set).
+Requirements: **Node 22+** and **pnpm 10**. Both venues read over public HTTP, so there's nothing to configure for market data.
 
 ```bash
 pnpm install
@@ -236,11 +238,11 @@ weather basis KXHIGHCHI-26AUG02-B73.5 --side yes --budget 300 --exposure 10000 \
 
 Add `--json` for machine-readable output, `--venue polymarket` to route elsewhere.
 
-## Placing cover
+## What it doesn't do
 
-Order placement is implemented for Polymarket only. Kalshi contracts are discoverable and priceable, but binding them needs an API key with RSA request signing, which isn't wired up — `place_order` refuses non-Polymarket contracts rather than routing to the wrong venue.
+It doesn't place trades. There's no wallet, no order routing and no position keeping.
 
-For Polymarket, trades cost real USDC and the broker walks through wallet setup, funding, approvals, and an explicit confirmation before placing. It never claims an order landed unless `place_order` returned an `orderId`.
+That's deliberate for now. The measurements are the product — what the weather costs a business, and how much of that a given contract would actually have covered — and those are worth having whether or not anyone executes through here. Every contract links to its venue, so placing a position takes a minute in the client's own account.
 
 ## Stack
 
@@ -248,5 +250,5 @@ For Polymarket, trades cost real USDC and the broker walks through wallet setup,
 - **Web** — Next.js 16, React 19, Tailwind 4, AI SDK 6, DeepSeek
 - **CLI** — Commander 14
 - **Data** — Kalshi (contracts), Open-Meteo archive + geocoding (weather history), both keyless
-- **Core** — Zod 4, native `fetch`, `execa` for the Polymarket binary
+- **Core** — Zod 4, native `fetch`, no runtime dependencies beyond those
 - **Checks** — oxlint, `tsc --noEmit`, vitest

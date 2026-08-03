@@ -196,12 +196,6 @@ export function normalizeMarket(raw: RawMarketT, context: SeriesContext): Market
     location: context.location,
     strike: normalizeStrike(raw),
     settlement: settlementFrom(raw, context.sources),
-    execution: {
-      venue: "kalshi",
-      ticker: raw.ticker,
-      eventTicker: raw.event_ticker,
-      seriesTicker: context.seriesTicker,
-    },
     url: `https://kalshi.com/markets/${context.seriesTicker.toLowerCase()}`,
   };
 }
@@ -261,7 +255,7 @@ export async function listWeatherSeries(): Promise<WeatherSeries[]> {
   return value;
 }
 
-export async function getSeries(ticker: string): Promise<WeatherSeries> {
+async function getSeries(ticker: string): Promise<WeatherSeries> {
   const data = await kalshiGet(`/series/${encodeURIComponent(ticker)}`);
   const parsed = z.object({ series: RawSeries }).parse(data);
   return normalizeSeries(parsed.series);

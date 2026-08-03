@@ -25,7 +25,7 @@ export function CoverProfileChart({
   attachment,
   unit,
 }: {
-  profile: Array<{ value: number; lossUsdc: number; payoutUsdc: number; netUsdc: number }>;
+  profile: Array<{ value: number; lossUsd: number; payoutUsd: number; netUsd: number }>;
   attachment: number;
   unit: StrikeUnit;
 }) {
@@ -36,9 +36,9 @@ export function CoverProfileChart({
     unit === "F" || unit === "C" ? tempValue(v, units, source) : v;
   const data = profile.map((row) => ({
     value: convert(row.value),
-    loss: -row.lossUsdc,
-    payout: row.payoutUsdc,
-    net: row.netUsdc,
+    loss: -row.lossUsd,
+    payout: row.payoutUsd,
+    net: row.netUsd,
   }));
 
   return (

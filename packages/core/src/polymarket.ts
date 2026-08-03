@@ -36,9 +36,6 @@ const RawMarket = z
     bestBid: z.number().nullish(),
     outcomes: z.union([z.string(), z.array(z.string())]).nullish(),
     outcomePrices: z.union([z.string(), z.array(z.string())]).nullish(),
-    clobTokenIds: z.union([z.string(), z.array(z.string())]).nullish(),
-    conditionId: z.string().nullish(),
-    negRisk: z.boolean().nullish(),
     active: z.boolean().nullish(),
     closed: z.boolean().nullish(),
     acceptingOrders: z.boolean().nullish(),
@@ -205,12 +202,6 @@ export function normalizeMarket(raw: RawMarketT, context: EventContext): Market 
     location: context.location,
     strike: parseStrike(raw.question),
     settlement: settlementFrom(raw),
-    execution: {
-      venue: "polymarket",
-      clobTokenIds: toStringArray(raw.clobTokenIds),
-      conditionId: raw.conditionId ?? null,
-      negRisk: raw.negRisk ?? false,
-    },
     url: `https://polymarket.com/event/${raw.slug ?? ""}`,
   };
 }

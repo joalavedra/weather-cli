@@ -22,14 +22,14 @@ import type { Ladder, StrikeUnit } from "./types.js";
 export interface CoverPlan {
   legs: CoverLeg[];
   /** Premium for one day of cover across every rung. */
-  premiumPerDayUsdc: number;
+  premiumPerDayUsd: number;
   /** Most the structure can pay on a single day. */
-  limitUsdc: number;
+  limitUsd: number;
   /** Where cover starts paying — the fitted threshold. */
   attachment: number;
   direction: LossDirection;
   /** Worst daily loss seen in the replay window. */
-  worstDayLossUsdc: number;
+  worstDayLossUsd: number;
   /** How much of that worst day the structure would have covered, 0–1. */
   worstDayCovered: number;
   /**
@@ -192,21 +192,21 @@ export function solveCover(args: SolveCoverArgs): CoverPlan {
     premises: replayWindow.premises,
     ...monthArg,
   });
-  const premiumPerDayUsdc = legs.reduce(
+  const premiumPerDayUsd = legs.reduce(
     (sum, leg) => sum + leg.contracts * leg.pricePerContract,
     0,
   );
-  const worstDayLossUsdc = -replay.worstDayUnhedged;
-  const limitUsdc = limitOf(legs);
+  const worstDayLossUsd = -replay.worstDayUnhedged;
+  const limitUsd = limitOf(legs);
   return {
     legs,
-    premiumPerDayUsdc,
-    limitUsdc,
+    premiumPerDayUsd,
+    limitUsd,
     attachment: args.curve.threshold,
     direction: args.curve.direction,
-    worstDayLossUsdc,
+    worstDayLossUsd,
     worstDayCovered:
-      worstDayLossUsdc === 0 ? 0 : Math.min(1, limitUsdc / worstDayLossUsdc),
+      worstDayLossUsd === 0 ? 0 : Math.min(1, limitUsd / worstDayLossUsd),
     expectedLossRatio: replay.lossRatio,
     replay,
     outOfSample: cut !== null,
@@ -237,15 +237,15 @@ export function coverProfile(
   plan: CoverPlan,
   curve: LossCurve,
   values: number[],
-): Array<{ value: number; lossUsdc: number; payoutUsdc: number; netUsdc: number }> {
+): Array<{ value: number; lossUsd: number; payoutUsd: number; netUsd: number }> {
   return values.map((value) => {
-    const lossUsdc = expectedLoss(curve, value);
-    const payoutUsdc = payoutAt(plan, value);
+    const lossUsd = expectedLoss(curve, value);
+    const payoutUsd = payoutAt(plan, value);
     return {
       value,
-      lossUsdc,
-      payoutUsdc,
-      netUsdc: payoutUsdc - plan.premiumPerDayUsdc - lossUsdc,
+      lossUsd,
+      payoutUsd,
+      netUsd: payoutUsd - plan.premiumPerDayUsd - lossUsd,
     };
   });
 }

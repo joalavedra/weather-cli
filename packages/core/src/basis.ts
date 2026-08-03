@@ -8,7 +8,7 @@ export interface LossProfile {
   /** The real-world loss in the client's own words. */
   lossEvent: string;
   /** Dollars at risk if the loss event occurs. */
-  exposureValueUsdc: number;
+  exposureValueUsd: number;
   /** Start of the exposure window, ISO date (inclusive). */
   windowStart: string;
   /** End of the exposure window, ISO date (inclusive). */
@@ -47,9 +47,9 @@ export interface BasisAssessment {
   /** ρ × τ × κ — share of the real loss this hedge actually neutralizes. */
   effectivenessScore: number;
   /** exposure × (1 − effectiveness) — dollars still exposed after the hedge. */
-  residualRiskUsdc: number;
+  residualRiskUsd: number;
   /** exposure × (1 − ρ) — dollars exposed purely to trigger mismatch. */
-  basisRiskUsdc: number;
+  basisRiskUsd: number;
   verdict: BasisVerdict;
   warnings: string[];
 }
@@ -130,11 +130,11 @@ export function computeBasisRisk(input: BasisInputs): BasisAssessment {
   if (rho < 0 || rho > 1) {
     throw new Error(`triggerCorrelation must be in [0, 1], got ${rho}`);
   }
-  const exposure = input.loss.exposureValueUsdc;
+  const exposure = input.loss.exposureValueUsd;
   if (exposure <= 0) {
-    throw new Error(`exposureValueUsdc must be positive, got ${exposure}`);
+    throw new Error(`exposureValueUsd must be positive, got ${exposure}`);
   }
-  const rawCoverage = input.quote.limitUsdc / exposure;
+  const rawCoverage = input.quote.limitUsd / exposure;
   const payoutCoverage = clamp01(rawCoverage);
   const tenor = tenorAlignment(input);
   const effectiveness = rho * tenor * payoutCoverage;
@@ -145,8 +145,8 @@ export function computeBasisRisk(input: BasisInputs): BasisAssessment {
     payoutCoverage,
     rawCoverageRatio: rawCoverage,
     effectivenessScore: effectiveness,
-    residualRiskUsdc: exposure * (1 - effectiveness),
-    basisRiskUsdc: exposure * (1 - rho),
+    residualRiskUsd: exposure * (1 - effectiveness),
+    basisRiskUsd: exposure * (1 - rho),
     verdict: verdictFor(effectiveness),
     warnings: basisWarnings(input, tenor, rawCoverage),
   };
@@ -157,25 +157,25 @@ export interface BasketLeg {
   question: string;
   side: "Yes" | "No";
   /** Price of the chosen side, 0–1. */
-  priceUsdc: number;
+  priceUsd: number;
   /** P(this leg pays out | the real loss event occurs), in [0, 1]. */
   triggerCorrelation: number;
   correlationRationale: string;
   /** Market's minimum order size in USDC, if known. */
-  orderMinSizeUsdc?: number;
+  orderMinSizeUsd?: number;
 }
 
 export interface BasketAllocation {
   leg: BasketLeg;
-  budgetUsdc: number;
+  budgetUsd: number;
   contracts: number;
-  limitUsdc: number;
+  limitUsd: number;
 }
 
 export interface BasketPlan {
   allocations: BasketAllocation[];
-  totalBudgetUsdc: number;
-  totalMaxPayoutUsdc: number;
+  totalBudgetUsd: number;
+  totalMaxPayoutUsd: number;
   /**
    * Combined trigger coverage from diversifying across proxies, capped at 0.95.
    * Assumes the legs' basis errors are *independent* — if the proxies tend to
@@ -184,7 +184,7 @@ export interface BasketPlan {
   combinedTriggerCoverage: number;
   combinedCoverageRatio: number | null;
   effectivenessScore: number | null;
-  residualRiskUsdc: number | null;
+  residualRiskUsd: number | null;
   warnings: string[];
 }
 
@@ -198,10 +198,10 @@ function basketWarnings(allocations: BasketAllocation[]): string[] {
     out.push("A basket of one is just a single hedge — use computeBasisRisk.");
   }
   for (const a of allocations) {
-    const min = a.leg.orderMinSizeUsdc;
-    if (min !== undefined && a.budgetUsdc < min) {
+    const min = a.leg.orderMinSizeUsd;
+    if (min !== undefined && a.budgetUsd < min) {
       out.push(
-        `Leg "${a.leg.question}" gets $${a.budgetUsdc.toFixed(2)} but its order minimum is $${min} — drop it or raise the budget.`,
+        `Leg "${a.leg.question}" gets $${a.budgetUsd.toFixed(2)} but its order minimum is $${min} — drop it or raise the budget.`,
       );
     }
   }
@@ -216,33 +216,33 @@ function basketWarnings(allocations: BasketAllocation[]): string[] {
  */
 export function composeBasket(
   legs: BasketLeg[],
-  totalBudgetUsdc: number,
-  exposureValueUsdc?: number,
+  totalBudgetUsd: number,
+  exposureValueUsd?: number,
 ): BasketPlan {
   if (legs.length === 0) throw new Error("composeBasket needs at least one leg");
-  if (totalBudgetUsdc <= 0) {
-    throw new Error(`totalBudgetUsdc must be positive, got ${totalBudgetUsdc}`);
+  if (totalBudgetUsd <= 0) {
+    throw new Error(`totalBudgetUsd must be positive, got ${totalBudgetUsd}`);
   }
   const weightTotal = legs.reduce((sum, l) => sum + l.triggerCorrelation, 0);
   if (weightTotal <= 0) {
     throw new Error("at least one leg must have triggerCorrelation > 0");
   }
   const allocations = legs.map((leg): BasketAllocation => {
-    if (leg.priceUsdc <= 0 || leg.priceUsdc >= 1) {
+    if (leg.priceUsd <= 0 || leg.priceUsd >= 1) {
       throw new Error(
-        `leg ${leg.marketId} price must be in (0, 1), got ${leg.priceUsdc}`,
+        `leg ${leg.marketId} price must be in (0, 1), got ${leg.priceUsd}`,
       );
     }
-    const budget = totalBudgetUsdc * (leg.triggerCorrelation / weightTotal);
-    const shares = budget / leg.priceUsdc;
-    return { leg, budgetUsdc: budget, contracts: shares, limitUsdc: shares };
+    const budget = totalBudgetUsd * (leg.triggerCorrelation / weightTotal);
+    const shares = budget / leg.priceUsd;
+    return { leg, budgetUsd: budget, contracts: shares, limitUsd: shares };
   });
-  const totalPayout = allocations.reduce((s, a) => s + a.limitUsdc, 0);
+  const totalPayout = allocations.reduce((s, a) => s + a.limitUsd, 0);
   const missProduct = legs.reduce((p, l) => p * (1 - l.triggerCorrelation), 1);
   const combinedCoverage = Math.min(MAX_COMBINED_COVERAGE, 1 - missProduct);
   const coverageRatio =
-    exposureValueUsdc && exposureValueUsdc > 0
-      ? totalPayout / exposureValueUsdc
+    exposureValueUsd && exposureValueUsd > 0
+      ? totalPayout / exposureValueUsd
       : null;
   const effectiveness =
     coverageRatio === null
@@ -250,15 +250,15 @@ export function composeBasket(
       : combinedCoverage * Math.min(1, coverageRatio);
   return {
     allocations,
-    totalBudgetUsdc,
-    totalMaxPayoutUsdc: totalPayout,
+    totalBudgetUsd,
+    totalMaxPayoutUsd: totalPayout,
     combinedTriggerCoverage: combinedCoverage,
     combinedCoverageRatio: coverageRatio,
     effectivenessScore: effectiveness,
-    residualRiskUsdc:
-      effectiveness === null || exposureValueUsdc === undefined
+    residualRiskUsd:
+      effectiveness === null || exposureValueUsd === undefined
         ? null
-        : exposureValueUsdc * (1 - effectiveness),
+        : exposureValueUsd * (1 - effectiveness),
     warnings: basketWarnings(allocations),
   };
 }
