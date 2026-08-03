@@ -131,11 +131,31 @@ export function parseStrike(question: string): Strike | null {
  * Pull the settlement station out of a market's resolution text, e.g.
  * "the highest temperature recorded at the London City Airport Station".
  */
+const STATION_PATTERNS = [
+  // "recorded by NOAA at the Ben Gurion International Airport"
+  /\brecorded by [^,.]{2,40}? at (?:the )?(.+?)(?: in degrees| in °|,|\.|\n)/i,
+  // "recorded at the London City Airport Station"
+  /\brecorded at (?:the )?(.+?)(?: in degrees| in °|,|\.|\n)/i,
+  // "recorded by the Hong Kong Observatory"
+  /\brecorded by (?:the )?(.+?)(?: in degrees| in °|,|\.|\n)/i,
+];
+
+/**
+ * Pull the settlement station out of a market's resolution text.
+ *
+ * Polymarket phrases this at least three ways — "recorded at the X", "recorded
+ * by NOAA at the X", "recorded by the Hong Kong Observatory" — and handling
+ * only the first dropped the station for a fifth of its cities. A missing
+ * station means basis cannot be measured at all, so the market silently becomes
+ * unusable rather than visibly wrong.
+ */
 export function parseStation(description: string | null | undefined): string | null {
   if (!description) return null;
-  const match = /\brecorded at (?:the )?(.+?)(?: in degrees| in °|,|\.|\n)/i.exec(description);
-  const station = match?.[1]?.trim();
-  return station === undefined || station === "" ? null : station;
+  for (const pattern of STATION_PATTERNS) {
+    const station = pattern.exec(description)?.[1]?.trim();
+    if (station && station !== "" && station.toLowerCase() !== "null") return station;
+  }
+  return null;
 }
 
 function parseSource(description: string | null | undefined): Settlement["sources"] {

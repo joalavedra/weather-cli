@@ -12,6 +12,7 @@ Weather risk intelligence for small businesses. The thesis: per-city weather con
 - **Weather data** (`observations.ts`, `loss.ts`, `geobasis.ts`). Open-Meteo archive and geocoding, free and keyless. `fitLossCurve` recovers the threshold and dollars-per-degree from a business's own daily revenue, reporting how much of the revenue swing weather explains at all — a weak fit means cover isn't warranted, and the tool says so. `measureGeographicBasis` compares the settlement station against the premises over years of history and returns the *measured* trigger correlation.
 - **Measured basis beats estimated basis.** Chicago Midway and a lakefront bar nine miles away correlate at 0.991 but the contract catches only 89.6% of the bar's loss days. Correlation describes the whole distribution; a trigger cares about one edge. The `measure_geographic_basis` tool now feeds `assess_basis_risk`, and the prompt falls back to `estimate_correlation` only where nothing is measurable.
 - **Checks.** `pnpm check` runs oxlint, `tsc --noEmit` across three packages, and vitest (165 tests). The web app has no component tests yet.
+- **Station parsing across phrasings.** Polymarket writes the settlement station at least three ways, and handling only "recorded at the X" dropped it for a fifth of its cities — silently making those markets unusable rather than visibly wrong.
 
 - **Backtest and solved sizing** (`backtest.ts`). Replays a structure over past seasons and reports the change in daily swing, the loss ratio, the worst day, and how many of the days that actually hurt the cover paid on. `sizeLegsFromHistory` sets each rung's contract count to the loss expected on the days that rung pays, which beat every flat count tried by hand (44% swing reduction against a best-manual 37%).
 - **Overhedging is visible and real.** At a flat count, swing reduction runs 4% → 19% → 37% → −1% as size climbs: too much cover adds volatility rather than removing it. The optimum is interior and asymmetric across rungs, which is the case for solving sizing instead of exposing it as a knob.
@@ -36,9 +37,11 @@ Weather risk intelligence for small businesses. The thesis: per-city weather con
 - **Execution removed.** `trading.ts`, the wallet route and the five order-placement tools are gone, along with `execa` and `qrcode.react`. The platform measures risk across venues and names the exact instrument; it does not hold funds or route orders. That decision can be revisited once the measurements say whether brokerage is worth building.
 - **Simplification.** The `Execution` union is gone — `Market.id`, `venue` and `url` already identify a contract, and the CLOB fields existed only to place orders. Dead exports (`listVenues`, `findCover`, `listAllLadders`, `getSeries`) removed. Every `*Usdc` field is now `*Usd`, since Kalshi settles in dollars and the blanket suffix asserted a currency one venue doesn't use. The design mocks for the deleted terminal UI are gone.
 
+- **The basis study** (`study.ts`, `weather basis-study`). Measures every city with a live ladder against its own city centre, at a threshold set from the local temperature distribution. 40 cities: median 97% of loss days caught, 88% at or above 85%, none below 70%, median station gap 18km. Cover tracks a city centre far better than the two hand-measurements suggested.
+- **Read it as an upper bound, and the command says so.** Both series come from ~10km gridded reanalysis, which smooths exactly the microclimates that create basis risk. Pairs the grid cannot separate are excluded outright rather than counted as perfect hedges — including them put the median near 100% and measured the weather archive rather than the weather. The two bad hand-measurements were both specific premises with a microclimate (a lakefront), not city centres, which is where the risk actually concentrates.
+
 ## Next
 
-- **Does the basis hold up?** Every measurement so far has been unflattering — a Chicago patio bar came out at 0.615 measured trigger correlation, London at 0.944. Running fifteen or twenty realistic business profiles across both venues and looking at the distribution decides what this product is. Mostly above 0.85 and brokerage is real; mostly below 0.7 and the valuable output is "don't buy this", which is a diagnostics product with a different shape and a different business model.
 - **Season cover, not single-day.** A quote of $0.24 per day of cover is not a product; a business exposed June to August needs ninety days. `solveCover` already replays across seasons — it just prices one event.
 - **An order ticket.** The honest terminus for an intelligence product: venue, contract, bucket, size, limit price, linked to the venue. Deferred until the basis study says whether anyone should be buying.
 - **Revenue upload in the web app.** Loss fitting is CLI-only today because it needs a CSV. The chat broker needs a file drop before an owner can use it.
@@ -62,6 +65,9 @@ Weather risk intelligence for small businesses. The thesis: per-city weather con
 
 - Polymarket's ladders cluster single-degree buckets around the likely outcome, so a business whose loss starts well outside that range gets only the open-ended catch-all rung. Cover is coarse at the tails.
 - Kalshi settles against NWS climatological reports; Polymarket settles against Wunderground airport stations. The product does not yet surface that the two have different reliability and manipulation profiles.
+
+- The study cannot see true station-versus-premises differences, only reanalysis grid cells. Confirming the headline needs real station records (GHCN or the NWS API) against real business addresses.
+- Eight cities are still skipped: six whose station names don't geocode (Tokyo Haneda, Hong Kong Observatory, Helsinki Vantaa, Qingdao, Buenos Aires) and two that resolve to the wrong continent (Jeddah, Panama).
 
 ## Known limitations
 
