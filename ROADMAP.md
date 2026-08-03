@@ -11,7 +11,7 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 - **Weather-only scope.** Politics, sports, crypto and entertainment routing removed from the core, tools, prompt and docs. A broker that also writes Lakers futures reads as a betting app.
 - **Weather data** (`observations.ts`, `loss.ts`, `geobasis.ts`). Open-Meteo archive and geocoding, free and keyless. `fitLossCurve` recovers the threshold and dollars-per-degree from a business's own daily revenue, reporting how much of the revenue swing weather explains at all — a weak fit means cover isn't warranted, and the tool says so. `measureGeographicBasis` compares the settlement station against the premises over years of history and returns the *measured* trigger correlation.
 - **Measured basis beats estimated basis.** Chicago Midway and a lakefront bar nine miles away correlate at 0.991 but the contract catches only 89.6% of the bar's loss days. Correlation describes the whole distribution; a trigger cares about one edge. The `measure_geographic_basis` tool now feeds `assess_basis_risk`, and the prompt falls back to `estimate_correlation` only where nothing is measurable.
-- **Checks.** `pnpm check` runs oxlint, `tsc --noEmit` across three packages, and vitest (149 tests).
+- **Checks.** `pnpm check` runs oxlint, `tsc --noEmit` across three packages, and vitest (149 tests). The web app has no component tests yet.
 
 - **Backtest and solved sizing** (`backtest.ts`). Replays a structure over past seasons and reports the change in daily swing, the loss ratio, the worst day, and how many of the days that actually hurt the cover paid on. `sizeLegsFromHistory` sets each rung's contract count to the loss expected on the days that rung pays, which beat every flat count tried by hand (44% swing reduction against a best-manual 37%).
 - **Overhedging is visible and real.** At a flat count, swing reduction runs 4% → 19% → 37% → −1% as size climbs: too much cover adds volatility rather than removing it. The optimum is interior and asymmetric across rungs, which is the case for solving sizing instead of exposing it as a knob.
@@ -21,6 +21,12 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 - **Out-of-sample evaluation.** Structures are sized on the earlier part of history and scored on a held-out tail. Sizing and scoring on the same days flatters every structure; when history is too short to split, `outOfSample` is false and the plan warns.
 
 - **Revenue upload in the chat broker.** `POST /api/revenue` parses and stores a `date,revenue` CSV keyed by a hash of the file; the `fit_loss_curve` and `solve_cover` tools take the id and read the rows server-side, so takings never pass through the model's context. Closes the gap that made the analysis CLI-only. The parser moved into core and now survives currency symbols, thousands separators, CRLF and extra columns.
+
+- **Workbench UI** (`apps/web`). Rebuilt on shadcn/ui and Tailwind 4, replacing the terminal-aesthetic chat. A client list on the left, an analysis canvas in the middle (revenue → loss curve → cover → basis), and the assistant docked right with the active client injected into its system prompt. Charts are Recharts via shadcn's chart wrapper, with fixed colour roles: loss warm, payout blue, net green.
+- **Clients are a real record.** `lib/clients.ts` stores name, premises, peril and exposed months, so the four facts every calculation needs are stated once instead of re-elicited. A self-serve owner has one; a broker has many.
+- **Analysis runs without a conversation.** `/api/analysis/{curve,cover,basis,options}` call the same core functions the assistant's tools do, so clicking "solve" doesn't require asking a model to do arithmetic.
+- **Cover options rank by distance to the settlement station**, not by matching the client's location text — a business stored as coordinates matched no series name at all, and the nearest station is what actually drives basis risk.
+- **Seasonal filtering.** The loss curve and the basis measurement now respect the client's exposed months. A patio bar's winter takings were dragging both.
 
 ## Next
 - **Revenue upload in the web app.** Loss fitting is CLI-only today because it needs a CSV. The chat broker needs a file drop before an owner can use it.
@@ -40,6 +46,9 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 
 - Uploaded revenue is stored unencrypted with no user model, no expiry and no access control — the id is the only thing gating it. Fine for a single-tenant demo, not for real clients.
 - On serverless the store falls back to the system temp directory, which is per-instance and ephemeral: an upload and a later tool call can land on different lambdas and the dataset won't be found. Needs blob storage or a database to be reliable in production. `REVENUE_DATA_DIR` points it at a real disk when one exists.
+
+- The workbench has no component or end-to-end tests. It was verified by driving the real UI in a browser, but nothing guards it against regression.
+- Cover options are capped at four distinct locations within 150km and six dates each; nothing tells the broker what was dropped.
 
 ## Known limitations
 

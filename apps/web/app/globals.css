@@ -1,46 +1,148 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Slate-tinted neutrals with a deep blue primary. The product sits between a
+ * spreadsheet and an insurance quote, so the surface stays quiet and the colour
+ * budget is spent almost entirely on the charts.
+ *
+ * Chart roles are fixed and meaningful rather than an arbitrary categorical
+ * ramp: loss is warm, cover payout is blue, the net result is green, and
+ * references are grey. Reading the same three colours the same way on every
+ * chart is most of what makes the profile legible.
+ */
+:root {
+  --radius: 0.5rem;
+
+  --background: oklch(0.995 0.001 260);
+  --foreground: oklch(0.21 0.015 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.015 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.015 260);
+
+  --primary: oklch(0.46 0.13 258);
+  --primary-foreground: oklch(0.99 0.002 260);
+  --secondary: oklch(0.96 0.005 260);
+  --secondary-foreground: oklch(0.28 0.02 260);
+  --muted: oklch(0.965 0.004 260);
+  --muted-foreground: oklch(0.52 0.015 260);
+  --accent: oklch(0.95 0.012 258);
+  --accent-foreground: oklch(0.33 0.05 258);
+  --destructive: oklch(0.58 0.21 27);
+
+  --border: oklch(0.9 0.006 260);
+  --input: oklch(0.9 0.006 260);
+  --ring: oklch(0.46 0.13 258);
+
+  /* loss */
+  --chart-1: oklch(0.62 0.19 25);
+  /* cover payout */
+  --chart-2: oklch(0.56 0.14 245);
+  /* net after cover */
+  --chart-3: oklch(0.6 0.14 155);
+  /* reference / unhedged */
+  --chart-4: oklch(0.62 0.02 260);
+  /* threshold marker */
+  --chart-5: oklch(0.7 0.15 70);
+
+  --sidebar: oklch(0.975 0.004 260);
+  --sidebar-foreground: oklch(0.21 0.015 260);
+  --sidebar-primary: oklch(0.46 0.13 258);
+  --sidebar-primary-foreground: oklch(0.99 0.002 260);
+  --sidebar-accent: oklch(0.94 0.012 258);
+  --sidebar-accent-foreground: oklch(0.3 0.04 258);
+  --sidebar-border: oklch(0.9 0.006 260);
+  --sidebar-ring: oklch(0.46 0.13 258);
+}
+
+.dark {
+  --background: oklch(0.17 0.012 260);
+  --foreground: oklch(0.96 0.003 260);
+  --card: oklch(0.21 0.014 260);
+  --card-foreground: oklch(0.96 0.003 260);
+  --popover: oklch(0.23 0.015 260);
+  --popover-foreground: oklch(0.96 0.003 260);
+
+  --primary: oklch(0.7 0.13 255);
+  --primary-foreground: oklch(0.17 0.012 260);
+  --secondary: oklch(0.27 0.016 260);
+  --secondary-foreground: oklch(0.96 0.003 260);
+  --muted: oklch(0.26 0.014 260);
+  --muted-foreground: oklch(0.68 0.015 260);
+  --accent: oklch(0.3 0.03 258);
+  --accent-foreground: oklch(0.93 0.02 258);
+  --destructive: oklch(0.68 0.19 25);
+
+  --border: oklch(1 0 0 / 11%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.7 0.13 255);
+
+  --chart-1: oklch(0.68 0.18 27);
+  --chart-2: oklch(0.68 0.14 245);
+  --chart-3: oklch(0.7 0.14 158);
+  --chart-4: oklch(0.6 0.02 260);
+  --chart-5: oklch(0.78 0.14 72);
+
+  --sidebar: oklch(0.2 0.013 260);
+  --sidebar-foreground: oklch(0.96 0.003 260);
+  --sidebar-primary: oklch(0.7 0.13 255);
+  --sidebar-primary-foreground: oklch(0.17 0.012 260);
+  --sidebar-accent: oklch(0.29 0.028 258);
+  --sidebar-accent-foreground: oklch(0.93 0.02 258);
+  --sidebar-border: oklch(1 0 0 / 11%);
+  --sidebar-ring: oklch(0.7 0.13 255);
+}
 
 @layer base {
-  :root {
-    color-scheme: dark;
-
-    --bg: #0a0a0a;
-    --panel: #111111;
-    --panel-2: #161616;
-    --border: #232323;
-    --border-2: #1a1a1a;
-    --text: #e6e6e6;
-    --text-2: #c9c9c9;
-    --text-dim: #8a8a8a;
-    --text-faint: #525252;
-    --amber: #ffaa00;
-    --amber-dim: #b87800;
-    --cyan: #00ddff;
-    --green: #00d97e;
-    --red: #ff3b3b;
-    --grid-line: rgba(255, 255, 255, 0.012);
-    --send-text: #000000;
-  }
-
-  :root[data-theme="light"] {
-    color-scheme: light;
-
-    --bg: #f7f4ec;
-    --panel: #ffffff;
-    --panel-2: #faf7ee;
-    --border: #d9d3c3;
-    --border-2: #e6e1d2;
-    --text: #0e0e0e;
-    --text-2: #2a2a2a;
-    --text-dim: #6b6b6b;
-    --text-faint: #9b9b9b;
-    --amber: #b87800;
-    --amber-dim: #8a5800;
-    --cyan: #00788e;
-    --green: #0e7d3f;
-    --red: #b32626;
-    --grid-line: rgba(0, 0, 0, 0.018);
-    --send-text: #ffffff;
+  * {
+    @apply border-border outline-ring/50;
   }
 
   html,
@@ -49,480 +151,18 @@
   }
 
   body {
-    font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
-    font-size: 13px;
-    line-height: 1.5;
-    color: var(--text);
-    background: var(--bg);
-    background-image:
-      linear-gradient(var(--grid-line) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-    background-size: 24px 24px;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   }
 
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: var(--border);
-    border-radius: 0;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #2c2c2c;
-  }
-}
-
-@layer components {
-  /* === Panels === */
-  .t-panel {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  padding: 12px;
-}
-
-.t-panel-label {
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.t-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 4px 0;
-  font-size: 12px;
-}
-.t-row .k {
-  color: var(--text-dim);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-}
-.t-row .v {
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-}
-
-.t-divider {
-  border-top: 1px solid var(--border-2);
-  margin: 10px 0;
-}
-
-/* === Status pills === */
-.t-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 1px 7px;
-  border: 1px solid var(--border);
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.t-pill::before {
-  content: "";
-  width: 5px;
-  height: 5px;
-  display: inline-block;
-  border-radius: 50%;
-}
-.t-pill.live {
-  color: var(--cyan);
-  border-color: rgba(0, 221, 255, 0.3);
-}
-.t-pill.live::before {
-  background: var(--cyan);
-  box-shadow: 0 0 5px var(--cyan);
-}
-.t-pill.ready {
-  color: var(--green);
-  border-color: rgba(0, 217, 126, 0.3);
-}
-.t-pill.ready::before {
-  background: var(--green);
-}
-.t-pill.warn {
-  color: var(--amber);
-  border-color: rgba(255, 170, 0, 0.3);
-}
-.t-pill.warn::before {
-  background: var(--amber);
-}
-.t-pill.err {
-  color: var(--red);
-  border-color: rgba(255, 59, 59, 0.3);
-}
-.t-pill.err::before {
-  background: var(--red);
-}
-
-/* === Bloomberg-cell odds === */
-.t-odds {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border: 1px solid var(--border);
-}
-.t-odd {
-  padding: 8px 10px;
-  border-right: 1px solid var(--border);
-}
-.t-odd:last-child {
-  border-right: 0;
-}
-.t-odd .label {
-  font-size: 9px;
-  letter-spacing: 0.18em;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-.t-odd .price {
-  font-size: 18px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-}
-.t-odd.yes .price {
-  color: var(--green);
-}
-.t-odd.no .price {
-  color: var(--red);
-}
-.t-odd .delta {
-  font-size: 10px;
-  color: var(--text-dim);
-  margin-top: 2px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* === Quote table === */
-.t-quote .t-row {
-  padding: 3px 0;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.04);
-  font-size: 11.5px;
-}
-.t-quote .t-row:last-child {
-  border-bottom: 0;
-}
-.t-quote .v.pos {
-  color: var(--green);
-}
-.t-quote .v.neg {
-  color: var(--red);
-}
-.t-quote .v.amber {
-  color: var(--amber);
-}
-
-/* === Amber link button === */
-.t-link {
-  display: block;
-  margin-top: 12px;
-  padding: 8px 10px;
-  border: 1px solid var(--amber-dim);
-  color: var(--amber);
-  text-align: center;
-  text-decoration: none;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  font-family: inherit;
-  transition: background 0.15s;
-}
-.t-link:hover {
-  background: rgba(255, 170, 0, 0.08);
-}
-
-/* === Address & terminal boxes === */
-.t-addr-box {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  padding: 8px 10px;
-  font-size: 10.5px;
-  color: var(--text);
-  word-break: break-all;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  font-family: inherit;
-  text-align: left;
-  width: 100%;
-}
-.t-addr-box:hover {
-  border-color: var(--amber-dim);
-  color: var(--amber);
-}
-
-/* === Hint chips (inline pinned hints in chat) === */
-.t-hint {
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  padding: 2px 6px;
-  border: 1px solid var(--border);
-  display: inline-block;
-}
-.t-hint.amber {
-  color: var(--amber);
-  border-color: rgba(255, 170, 0, 0.3);
-}
-
-/* === Section headings === */
-.t-section-label {
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  color: var(--text-dim);
-  text-transform: uppercase;
-}
-
-.t-trade-tag {
-  font-size: 9px;
-  letter-spacing: 0.18em;
-  color: var(--amber);
-  text-transform: uppercase;
-}
-
-.t-status-cyan {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  color: var(--cyan);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-.t-status-cyan::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  background: var(--cyan);
-  display: inline-block;
-  border-radius: 50%;
-  box-shadow: 0 0 6px var(--cyan);
-}
-
-/* === Composer === */
-.t-composer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  transition: border-color 0.15s;
-}
-.t-composer:focus-within {
-  border-color: var(--amber-dim);
-}
-.t-composer-caret {
-  color: var(--amber);
-  font-weight: 500;
-  font-size: 14px;
-}
-.t-composer-input {
-  flex: 1;
-  background: none;
-  border: 0;
-  font-family: inherit;
-  color: var(--text);
-  font-size: 13px;
-  outline: 0;
-}
-.t-composer-input::placeholder {
-  color: var(--text-faint);
-}
-.t-send-btn {
-  background: var(--amber);
-  color: var(--send-text);
-  border: 0;
-  padding: 6px 12px;
-  font-family: inherit;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  cursor: pointer;
-  font-weight: 500;
-}
-.t-send-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.t-send-btn:not(:disabled):hover {
-  filter: brightness(1.1);
-}
-
-/* === Chat message bubbles === */
-.t-msg-user {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  padding: 8px 12px;
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-.t-msg-assistant {
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--text);
-}
-.t-msg-assistant strong {
-  color: var(--amber);
-  font-weight: 500;
-}
-.t-msg-assistant code {
-  background: var(--panel);
-  border: 1px solid var(--border-2);
-  padding: 1px 5px;
-  font-size: 12px;
-  color: var(--text);
-}
-.t-msg-assistant a {
-  color: var(--cyan);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.t-msg-assistant ul,
-.t-msg-assistant ol {
-  margin: 6px 0;
-  padding-left: 20px;
-}
-.t-msg-assistant li {
-  margin: 2px 0;
-}
-.t-msg-assistant p {
-  margin: 6px 0;
-}
-.t-msg-assistant p:first-child {
-  margin-top: 0;
-}
-.t-msg-assistant p:last-child {
-  margin-bottom: 0;
-}
-.t-msg-assistant blockquote {
-  border-left: 2px solid var(--border);
-  padding-left: 10px;
-  color: var(--text-dim);
-  margin: 8px 0;
-}
-.t-msg-assistant hr {
-  border: 0;
-  border-top: 1px solid var(--border-2);
-  margin: 10px 0;
-}
-.t-msg-assistant pre {
-  background: var(--panel);
-  border: 1px solid var(--border-2);
-  padding: 10px;
-  margin: 8px 0;
-  overflow-x: auto;
-  font-size: 12px;
-}
-.t-msg-assistant pre code {
-  background: transparent;
-  border: 0;
-  padding: 0;
-}
-
-/* === Brand glyph === */
-.t-glyph {
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--amber);
-  display: grid;
-  place-items: center;
-  color: var(--amber);
-  font-size: 12px;
-  font-family: inherit;
-}
-
-.t-h1 {
-  font-family: var(--font-plex-sans), sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  color: var(--text);
-  text-transform: uppercase;
-}
-
-.t-history-toggle {
-  background: none;
-  border: 0;
-  color: var(--text-dim);
-  font-family: inherit;
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  cursor: pointer;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.t-history-toggle:hover {
-  color: var(--text);
-}
-
-/* === Suggested-reply pills (above composer) === */
-.t-suggest-pill {
-  font-family: inherit;
-  font-size: 11.5px;
-  color: var(--text-2);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  padding: 5px 11px;
-  cursor: pointer;
-  letter-spacing: 0.01em;
-  transition: all 0.12s;
-}
-.t-suggest-pill:hover {
-  border-color: var(--amber-dim);
-  color: var(--amber);
-  background: var(--panel-2);
-}
-
-/* === Theme toggle button === */
-.t-theme-toggle {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 12px;
-  transition: border-color 0.15s, color 0.15s;
-}
-.t-theme-toggle:hover {
-  border-color: var(--amber-dim);
-  color: var(--amber);
-}
-}
-
-@layer components {
-  .t-upload-btn {
-    @apply inline-flex items-center border border-[var(--border)] bg-[var(--panel)]
-      px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-[var(--text-dim)]
-      cursor-pointer transition-colors;
-  }
-  .t-upload-btn:hover {
-    @apply border-[var(--amber-dim)] text-[var(--amber)] bg-[var(--panel-2)];
-  }
-  .t-upload-btn[aria-disabled="true"] {
-    @apply opacity-50 cursor-not-allowed;
+  /*
+   * Figures are compared down columns constantly here — premiums against
+   * limits, degrees against thresholds — so every number is tabular and
+   * lining, and digits keep their width as values change.
+   */
+  .tnum {
+    font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: -0.01em;
   }
 }
