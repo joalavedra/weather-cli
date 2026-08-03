@@ -5,8 +5,16 @@ import type { NextConfig } from "next";
  * deployment with a path rewrite, the same way /sett is wired. Local dev runs
  * at http://localhost:3000/weather for the same reason.
  */
+const BASE_PATH = "/weather";
+
 const config: NextConfig = {
-  basePath: "/weather",
+  basePath: BASE_PATH,
+  /**
+   * `basePath` rewrites Next's own routing and `<Link>`s, but not `fetch`.
+   * Exporting it keeps the client's API calls in step with the server rather
+   * than leaving a second copy of the prefix to drift.
+   */
+  env: { NEXT_PUBLIC_BASE_PATH: BASE_PATH },
   /**
    * `@weather/core` is a workspace package, so it must be bundled rather than
    * left external. Marking it external tells Next to resolve it from
