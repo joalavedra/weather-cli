@@ -84,7 +84,7 @@ export function CoverCard({
         <CardDescription>
           Each rung is sized to the loss expected on the days it pays, so the premium falls out
           of the loss rather than being a budget you pick. Bucket labels are the contract&apos;s
-          own wording and stay in Fahrenheit.
+          own wording, in whichever scale it settles in.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -125,7 +125,7 @@ export function CoverCard({
               <Stat label="Cover limit" value={usd(Math.round(result.plan.limitUsdc))} hint="worst bucket" />
               <Stat
                 label="Attaches"
-                value={`${result.plan.direction === "below" ? "↓" : "↑"} ${formatTemp(result.plan.attachment, units)}`}
+                value={`${result.plan.direction === "below" ? "↓" : "↑"} ${formatTemp(result.plan.attachment, units, 1, result.curve.unit === "C" ? "C" : "F")}`}
               />
               <Stat
                 label="Worst day carried"
@@ -149,11 +149,11 @@ export function CoverCard({
                   <TableRow key={leg.label}>
                     <TableCell className="font-medium">
                       {leg.label}
-                      {units === "metric" && leg.strike.unit === "F" ? (
+                      {leg.strike.unit === "F" && units === "metric" ? (
                         <span className="text-muted-foreground ml-1.5 text-xs font-normal">
                           ({leg.strike.cap !== null
-                            ? `≤ ${formatTemp(leg.strike.cap, units, 0)}`
-                            : `≥ ${formatTemp(leg.strike.floor ?? 0, units, 0)}`}
+                            ? `≤ ${formatTemp(leg.strike.cap, units, 0, "F")}`
+                            : `≥ ${formatTemp(leg.strike.floor ?? 0, units, 0, "F")}`}
                           )
                         </span>
                       ) : null}

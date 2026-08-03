@@ -26,10 +26,12 @@ export function LossCurveChart({
   scatter: Array<{ value: number; revenue: number }>;
 }) {
   const units = useUnits();
-  const unitLabel = curve.unit === "F" ? tempUnitLabel(units) : "";
+  const source = curve.unit === "C" ? "C" : "F";
+  const unitLabel = curve.unit === "F" || curve.unit === "C" ? tempUnitLabel(units) : "";
   // Convert before plotting so the axis ticks land on whole degrees in
   // whichever unit is being read, rather than on converted Fahrenheit steps.
-  const convert = (v: number) => (curve.unit === "F" ? tempValue(v, units) : v);
+  const convert = (v: number) =>
+    curve.unit === "F" || curve.unit === "C" ? tempValue(v, units, source) : v;
   const values = scatter.map((s) => convert(s.value));
   const low = Math.floor(Math.min(...values));
   const high = Math.ceil(Math.max(...values));

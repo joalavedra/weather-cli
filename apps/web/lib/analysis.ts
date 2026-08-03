@@ -29,6 +29,7 @@ import type {
   Peril,
   WeatherSeries,
 } from "@weather/core";
+import { polymarket } from "@weather/core";
 import { loadDataset } from "@/lib/datasets";
 import { getJson, putJson } from "@/lib/store";
 import type { Client } from "@/lib/clients";
@@ -63,7 +64,10 @@ export interface CurveResult {
  * business that they should be able to eyeball. A hockey stick drawn over the
  * actual points is far more convincing — and far more falsifiable — than an R².
  */
-export async function fitClientCurve(client: Client): Promise<CurveResult> {
+export async function fitClientCurve(
+  client: Client,
+  scale: "F" | "C" = "F",
+): Promise<CurveResult> {
   if (!client.datasetId) {
     throw new Error(`${client.name} has no revenue uploaded yet`);
   }
@@ -74,6 +78,7 @@ export async function fitClientCurve(client: Client): Promise<CurveResult> {
     start: dataset.start,
     end: dataset.end,
     peril: client.peril,
+    scale,
   });
   if (!series) throw new Error("the weather archive returned nothing for that location");
 
@@ -112,12 +117,34 @@ export interface HistoryPair {
  * Observations at both the settlement station and the client's premises, over
  * the same window and in one request.
  */
-export async function loadHistoryPair(client: Client, ladder: Ladder): Promise<HistoryPair> {
-  if (!ladder.settlement.station) {
-    throw new Error(`${ladder.eventTicker} does not name a settlement station in its rules`);
+/**
+ * Locate the station a ladder settles on.
+ *
+ * Venues name stations for humans, not geocoders — "Chicago Midway, IL"
+ * resolves, "London City Airport Station" does not. Progressively simpler forms
+ * are tried before falling back to the ladder's own city, because measuring
+ * basis against the city is far more useful than refusing to measure it at all.
+ */
+async function resolveStation(ladder: Ladder): Promise<GeoPoint> {
+  const station = ladder.settlement.station;
+  const attempts = [
+    station,
+    station?.replace(/\s+Station$/i, ""),
+    station?.replace(/\s+(?:International\s+)?Airport.*$/i, ""),
+    ladder.location,
+  ].filter((v): v is string => Boolean(v && v.trim() !== ""));
+  for (const attempt of attempts) {
+    const point = await cachedGeocode(attempt);
+    if (point) return point;
   }
+  throw new Error(
+    `could not locate the settlement point for ${ladder.eventTicker} ("${station ?? "unnamed"}")`,
+  );
+}
+
+export async function loadHistoryPair(client: Client, ladder: Ladder): Promise<HistoryPair> {
   const [stationPoint, premisesPoint] = await Promise.all([
-    resolvePoint(ladder.settlement.station),
+    resolveStation(ladder),
     resolvePoint(client.premises),
   ]);
   const [station, premises] = await dailyHistory({
@@ -125,6 +152,7 @@ export async function loadHistoryPair(client: Client, ladder: Ladder): Promise<H
     start: HISTORY_START,
     end: HISTORY_END,
     peril: ladder.peril ?? client.peril,
+    scale: scaleFor(ladder),
   });
   if (!station || !premises) {
     throw new Error("the weather archive returned nothing for those locations");
@@ -162,10 +190,8 @@ export async function solveClientCover(
   client: Client,
   eventTicker: string,
 ): Promise<CoverResult> {
-  const [{ curve }, ladder] = await Promise.all([
-    fitClientCurve(client),
-    kalshi.getLadder(eventTicker),
-  ]);
+  const ladder = await resolveLadder(eventTicker);
+  const { curve } = await fitClientCurve(client, scaleFor(ladder));
   const history = await loadHistoryPair(client, ladder);
   const plan = solveCover({
     ladder,
@@ -205,10 +231,8 @@ export async function measureClientBasis(
   client: Client,
   eventTicker: string,
 ): Promise<BasisResult> {
-  const [{ curve }, ladder] = await Promise.all([
-    fitClientCurve(client),
-    kalshi.getLadder(eventTicker),
-  ]);
+  const ladder = await resolveLadder(eventTicker);
+  const { curve } = await fitClientCurve(client, scaleFor(ladder));
   const history = await loadHistoryPair(client, ladder);
 
   /*
@@ -316,6 +340,7 @@ export async function listCoverage(): Promise<CoveragePlace[]> {
   );
   if (cached && Date.now() - cached.at < COVERAGE_TTL_MS) return cached.places;
 
+  const international = await polymarket.listTemperatureLadders().catch(() => []);
   const catalogue = await kalshi.listWeatherSeries();
   /*
    * Only perils with an observation series behind them.
@@ -331,8 +356,21 @@ export async function listCoverage(): Promise<CoveragePlace[]> {
     (await hasOpenEvent(series.ticker)) ? series : null,
   );
 
+  const intlAsSeries: WeatherSeries[] = international
+    .filter((l) => l.location !== null)
+    .map((l) => ({
+      venue: "polymarket" as const,
+      ticker: l.seriesTicker,
+      title: l.title,
+      peril: l.peril ?? "other",
+      location: l.location,
+      frequency: "daily",
+      settlementSources: l.settlement.sources,
+      tags: [],
+    }));
+
   const resolved = await mapWithConcurrency(
-    live.filter((s): s is WeatherSeries => s !== null),
+    [...live.filter((s): s is WeatherSeries => s !== null), ...intlAsSeries],
     GEOCODE_CONCURRENCY,
     async (series) => {
       const point = await cachedGeocode(series.location as string);
@@ -370,6 +408,31 @@ export async function listCoverage(): Promise<CoveragePlace[]> {
     .toSorted((a, b) => b.perils.length - a.perils.length || a.location.localeCompare(b.location));
   await putJson(COVERAGE_CACHE_KEY, { at: Date.now(), places }).catch(() => undefined);
   return places;
+}
+
+/**
+ * Ladder ids carry their venue.
+ *
+ * Kalshi tickers (KXHIGHCHI-26AUG03) and Polymarket slugs
+ * (highest-temperature-in-london-on-august-3-2026) share no format, but relying
+ * on that would be a guess. The prefix makes routing explicit.
+ */
+export function qualifyLadderId(venue: string, id: string): string {
+  return `${venue}:${id}`;
+}
+
+async function resolveLadder(qualified: string): Promise<Ladder> {
+  const [venue, ...rest] = qualified.split(":");
+  const id = rest.join(":");
+  if (venue === "polymarket") return polymarket.getLadder(id);
+  if (venue === "kalshi") return kalshi.getLadder(id);
+  // Unprefixed ids predate venue routing; treat them as Kalshi.
+  return kalshi.getLadder(qualified);
+}
+
+/** The temperature scale a ladder settles in, so observations match its strikes. */
+function scaleFor(ladder: Ladder): "F" | "C" {
+  return ladder.rungs.find((r) => r.strike?.unit === "C") ? "C" : "F";
 }
 
 export interface CoverOption {
@@ -539,9 +602,51 @@ export async function findCoverOptions(client: Client): Promise<CoverOption[]> {
       location: c.series.location,
       settlementSource: c.series.settlementSources[0]?.name ?? null,
       distanceKm: Math.round(c.km),
-      events: await kalshi.listEvents(c.series.ticker, 6).catch(() => []),
+      events: (await kalshi.listEvents(c.series.ticker, 6).catch(() => [])).map((e) => ({
+        eventTicker: qualifyLadderId("kalshi", e.eventTicker),
+        title: e.title,
+      })),
     })),
   );
+
+  /*
+   * Polymarket carries the rest of the world.
+   *
+   * Kalshi lists US weather only, so without this a business in London, Tokyo
+   * or São Paulo was told no cover exists anywhere — when a fully traded daily
+   * ladder was sitting there in Celsius.
+   */
+  const international = await polymarket.listTemperatureLadders().catch(() => []);
+  const intlMatches = await mapWithConcurrency(
+    international.filter((l) => l.peril === client.peril && l.location !== null),
+    GEOCODE_CONCURRENCY,
+    async (ladder) => {
+      const point = await cachedGeocode(ladder.location as string);
+      if (!point) return null;
+      const km = distanceKm(premises, point);
+      return km <= MAX_DISTANCE_KM ? { ladder, km } : null;
+    },
+  );
+  await saveGeocodeCache();
+
+  const intlOptions = intlMatches
+    .filter((m): m is { ladder: Ladder; km: number } => m !== null)
+    .toSorted((a, b) => a.km - b.km)
+    .filter((m, i, all) => all.findIndex((o) => o.ladder.location === m.ladder.location) === i)
+    .slice(0, VISIBLE_LIMIT)
+    .map((m) => ({
+      seriesTicker: m.ladder.seriesTicker,
+      title: m.ladder.title,
+      location: m.ladder.location,
+      settlementSource: m.ladder.settlement.sources[0]?.name ?? null,
+      distanceKm: Math.round(m.km),
+      events: [
+        {
+          eventTicker: qualifyLadderId("polymarket", m.ladder.eventTicker),
+          title: m.ladder.title,
+        },
+      ],
+    }));
 
   /*
    * Drop dead series before collapsing duplicates, not after.
@@ -552,8 +657,9 @@ export async function findCoverOptions(client: Client): Promise<CoverOption[]> {
    * live one, so a Chicago business was told no cover existed while a fully
    * traded ladder sat right there.
    */
-  return withEvents
+  return [...withEvents, ...intlOptions]
     .filter((s) => s.events.length > 0)
+    .toSorted((a, b) => (a.distanceKm ?? 1e9) - (b.distanceKm ?? 1e9))
     .filter((s, i, all) => all.findIndex((o) => o.location === s.location) === i)
     .slice(0, VISIBLE_LIMIT);
 }

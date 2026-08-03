@@ -11,7 +11,7 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 - **Weather-only scope.** Politics, sports, crypto and entertainment routing removed from the core, tools, prompt and docs. A broker that also writes Lakers futures reads as a betting app.
 - **Weather data** (`observations.ts`, `loss.ts`, `geobasis.ts`). Open-Meteo archive and geocoding, free and keyless. `fitLossCurve` recovers the threshold and dollars-per-degree from a business's own daily revenue, reporting how much of the revenue swing weather explains at all — a weak fit means cover isn't warranted, and the tool says so. `measureGeographicBasis` compares the settlement station against the premises over years of history and returns the *measured* trigger correlation.
 - **Measured basis beats estimated basis.** Chicago Midway and a lakefront bar nine miles away correlate at 0.991 but the contract catches only 89.6% of the bar's loss days. Correlation describes the whole distribution; a trigger cares about one edge. The `measure_geographic_basis` tool now feeds `assess_basis_risk`, and the prompt falls back to `estimate_correlation` only where nothing is measurable.
-- **Checks.** `pnpm check` runs oxlint, `tsc --noEmit` across three packages, and vitest (151 tests). The web app has no component tests yet.
+- **Checks.** `pnpm check` runs oxlint, `tsc --noEmit` across three packages, and vitest (165 tests). The web app has no component tests yet.
 
 - **Backtest and solved sizing** (`backtest.ts`). Replays a structure over past seasons and reports the change in daily swing, the loss ratio, the worst day, and how many of the days that actually hurt the cover paid on. `sizeLegsFromHistory` sets each rung's contract count to the loss expected on the days that rung pays, which beat every flat count tried by hand (44% swing reduction against a best-manual 37%).
 - **Overhedging is visible and real.** At a flat count, swing reduction runs 4% → 19% → 37% → −1% as size climbs: too much cover adds volatility rather than removing it. The optimum is interior and asymmetric across rungs, which is the case for solving sizing instead of exposing it as a knob.
@@ -30,6 +30,9 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 
 - **Onboarding and units.** Place autocomplete pins a business to coordinates rather than a guessed city centre; a coverage list answers "is my city covered?" without adding a business first; a downloadable sample file shows what the CSV needs; and a °F/°C toggle converts every reading, including the per-degree rate (a degree Celsius is 1.8°F, so $137/°F is $247/°C). Contract bucket labels stay in the venue's own wording because they are the contract's terms.
 
+- **International cover via Polymarket** (`polymarket.ts` rewritten). Kalshi lists US weather only. Polymarket runs daily high and low temperature ladders for ~50 cities across Europe, Asia, the Middle East, Africa, Oceania and South America, in 1°C buckets, each naming the airport station it settles on. Read over the public Gamma API rather than by spawning the `polymarket` CLI, which could not run serverless — so the deployed product previously had no international cover at all. Strikes are parsed from the question text and stations from the resolution rules, which is why this venue used to contribute nothing.
+- **Celsius is a first-class unit.** `StrikeUnit` gains `"C"`, observations are fetched in whichever scale a ladder settles in, and the display layer converts from the source scale rather than assuming Fahrenheit. Comparing a 30°C strike against a Fahrenheit observation would have been silent and badly wrong.
+
 ## Next
 - **Revenue upload in the web app.** Loss fitting is CLI-only today because it needs a CSV. The chat broker needs a file drop before an owner can use it.
 - **Fair-value check.** Compare the market-implied probability of a rung against the climatological base rate from the same archive, so a client can see whether cover is cheap or dear.
@@ -42,8 +45,6 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 - **Vertical templates.** Ice cream, patio bar, ski rental, landscaping, outdoor events, golf — each with a default peril, threshold and starting loss curve.
 - **Station-grade observations.** Open-Meteo's archive is gridded reanalysis, not the NWS station record contracts settle on. It measures the relationship between two places well, but two points in one grid cell read as identical. GHCN or the NWS API would give the true station series.
 
-- **Polymarket is dead weight.** It cannot serve the analysis pipeline: its markets carry no parseable strike bounds and no settlement station, so `selectLossRungs` drops every rung and basis cannot be measured. It also runs by spawning a local `polymarket` CLI, which does not exist on a serverless host, so the deployed app cannot reach it at all. It contributes only the `place_order` path, which is equally unreachable in production. Removing the venue, its adapter, `trading.ts` and the wallet UI would delete a meaningful amount of code and one whole class of confusion.
-
 ## Deferred
 
 - **Privacy / pooling.** Public orderbooks can dox a business's hedge. Mitigation: route pooled positions through backend wallets so individual exposure isn't legible. Parked, kept here so it isn't lost.
@@ -53,6 +54,9 @@ Agent-native weather cover for small businesses. The thesis: per-city weather co
 
 - The workbench has no component or end-to-end tests. It was verified by driving the real UI in a browser, but nothing guards it against regression.
 - Cover options are capped at four distinct locations within 150km and six dates each; nothing tells the broker what was dropped.
+
+- Polymarket's ladders cluster single-degree buckets around the likely outcome, so a business whose loss starts well outside that range gets only the open-ended catch-all rung. Cover is coarse at the tails.
+- Kalshi settles against NWS climatological reports; Polymarket settles against Wunderground airport stations. The product does not yet surface that the two have different reliability and manipulation profiles.
 
 ## Known limitations
 

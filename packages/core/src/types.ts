@@ -17,8 +17,15 @@ export type Peril =
 
 export type StrikeType = "less" | "greater" | "between" | "unknown";
 
-/** Unit a strike is denominated in, when it can be determined. */
-export type StrikeUnit = "F" | "in" | "count" | null;
+/**
+ * Unit a strike is denominated in, when it can be determined.
+ *
+ * Both scales are first-class rather than normalized to one: Kalshi writes US
+ * contracts in Fahrenheit and Polymarket writes international ones in Celsius,
+ * and a contract's own terms are the thing being quoted. Converting on the way
+ * in would misquote them.
+ */
+export type StrikeUnit = "F" | "C" | "in" | "count" | null;
 
 /**
  * The bucket of outcomes a contract pays YES on. `floor` and `cap` are

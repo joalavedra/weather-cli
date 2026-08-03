@@ -29,7 +29,9 @@ export function BasisScatterChart({
 }) {
   const units = useUnits();
   const unitLabel = measureUnitLabel(unit, units);
-  const convert = (v: number) => (unit === "F" ? tempValue(v, units) : v);
+  const source = unit === "C" ? "C" : "F";
+  const convert = (v: number) =>
+    unit === "F" || unit === "C" ? tempValue(v, units, source) : v;
   const points = scatter.map((p) => ({
     station: convert(p.station),
     premises: convert(p.premises),

@@ -81,8 +81,10 @@ export async function fetchDataset(id: string): Promise<DatasetSummary> {
   ).dataset;
 }
 
-export async function fetchCurve(clientId: string): Promise<CurveResult> {
-  return unwrap<CurveResult>(await fetch(base(`/api/analysis/curve?clientId=${clientId}`)));
+export async function fetchCurve(clientId: string, scale: "F" | "C" = "F"): Promise<CurveResult> {
+  return unwrap<CurveResult>(
+    await fetch(base(`/api/analysis/curve?clientId=${clientId}&scale=${scale}`)),
+  );
 }
 
 export async function fetchCoverOptions(clientId: string): Promise<CoverOption[]> {
